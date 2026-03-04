@@ -1,0 +1,65 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: tx-api
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql+psycopg2://user:pass@db:5432/txdb
+      TZ: Asia/Singapore
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+  poller-worker:
+    build: .
+    container_name: tx-poller
+    command: python -m app.workers.poller_worker
+    environment:
+      DATABASE_URL: postgresql+psycopg2://user:pass@db:5432/txdb
+    depends_on:
+      - db
+
+  parser-worker:
+    build: .
+    container_name: tx-parser
+    command: python -m app.workers.parser_worker
+    environment:
+      DATABASE_URL: postgresql+psycopg2://user:pass@db:5432/txdb
+    depends_on:
+      - db
+
+  correlator-worker:
+    build: .
+    container_name: tx-correlator
+    command: python -m app.workers.correlator_worker
+    environment:
+      DATABASE_URL: postgresql+psycopg2://user:pass@db:5432/txdb
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    container_name: tx-postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: txdb
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  adminer:
+    image: adminer
+    container_name: tx-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:

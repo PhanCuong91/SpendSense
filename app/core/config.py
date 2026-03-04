@@ -1,0 +1,27 @@
+from pydantic import BaseSettings
+
+
+class Settings(BaseSettings):
+    # Environment
+    ENV: str = "dev"
+    TZ: str = "Asia/Singapore"
+
+    # Database
+    DATABASE_URL: str
+
+    # Gmail API
+    GMAIL_CREDENTIALS_PATH: str = "credentials.json"
+    GMAIL_TOKEN_PATH: str = "token.json"
+
+    # Pipeline Configuration
+    POLL_INTERVAL_SECONDS: int = 60
+    CORRELATION_WINDOW_MINUTES: int = 15
+
+    # Logging
+    LOG_LEVEL: str = "INFO"
+
+    class Config:
+        env_file = ".env"
+
+
+settings = Settings()
