@@ -8,6 +8,7 @@
 | Module path error: `Error while finding module specification for 'app.worker.poller_worker'` | The worker modules were located in `app/workers/` directory (plural), but the README and import statements referenced `app.worker` (singular). | Updated all references in README.md from `app.worker.*` to `app.workers.*` to match the actual directory structure. |
 | Missing dependency: `ModuleNotFoundError: No module named 'dateutil'` | The parsing module imports `dateutil` library which was not listed in `requirements.txt`. | Added `python-dateutil` to `requirements.txt` and installed it with `pip install python-dateutil`. |
 | Circular import: `NameError: name 'CorrelationLink' is not defined` | `ParsedTransactionCandidate` model defined relationships to `CorrelationLink` but didn't import it, causing the relationship initialization to fail when SQLAlchemy tried to resolve the string reference. Additionally, two foreign keys between the same tables caused ambiguous join conditions. | Created `app/db/models/__init__.py` to import all models in the correct order, updated `ParsedTransactionCandidate` to import `CorrelationLink` directly, and used explicit column references in `foreign_keys` parameter: `foreign_keys=[CorrelationLink.debit_candidate_id]`. Updated `gmail/poller.py` to import models from the package. |
+| Database schema mismatch: `(psycopg2.errors.UndefinedColumn) column "error_type" of relation "error_log" does not exist` | The migration file had incorrect column names (`error_message`, `stack_trace`, `timestamp`) that didn't match the `ErrorLog` model which expected `error_type`, `stack`, and `created_at`. | Updated the migration file `25e3615898c8_initial_migration.py` to use the correct column names and types that match the `ErrorLog` model definition. Dropped and recreated the database with the corrected migration. |
 
 ## Summary
 
@@ -18,13 +19,16 @@ All issues were resolved through the following steps:
 4. **Module paths**: Corrected module paths from singular `worker` to plural `workers`
 5. **Missing dependencies**: Added `python-dateutil` to requirements and installed it
 6. **Circular imports**: Fixed import order by creating `app/db/models/__init__.py` and updating relationship definitions with explicit foreign key column references
+7. **Schema mismatch**: Updated ErrorLog migration columns from `error_message`/`stack_trace`/`timestamp` to match model: `error_type`/`stack`/`created_at`
 
 ## Current Status
 
 ✅ **FastAPI server**: Running on port 8000  
-✅ **Database**: Connected, migrated, and queryable  
+✅ **Database**: Connected, migrated with correct schema  
 ✅ **Workers**: Can be started without import errors  
 ✅ **ORM models**: All models properly initialized with correct relationships  
 ✅ **No circular import issues**: Models load in proper dependency order
+✅ **Error logging**: ErrorLog table has correct columns and can store errors  
+✅ **Worker processes**: Parser and poller workers can run and write to database
 
 

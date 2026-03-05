@@ -59,9 +59,9 @@ def upgrade() -> None:
     op.create_table('error_log',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('email_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('error_message', sa.Text(), nullable=True),
-        sa.Column('stack_trace', sa.Text(), nullable=True),
-        sa.Column('timestamp', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
+        sa.Column('error_type', sa.String(), nullable=False),
+        sa.Column('stack', sa.Text(), nullable=False),
+        sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.ForeignKeyConstraint(['email_id'], ['email_raw.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
