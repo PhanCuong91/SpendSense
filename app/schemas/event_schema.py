@@ -22,4 +22,3 @@ class EventListResponse(BaseModel):
     total_pages: int
     has_next: bool
     has_prev: bool
-``

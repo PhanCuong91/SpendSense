@@ -740,6 +740,6 @@ Run Locally:
 Python -m pip install -r requirements
 PYTHONPATH="$(pwd)" alembic upgrade head
 uvicorn app.main:app --reload --port 8000
-python -m app.worker.poller_worker
-python -m app.worker.parser_worker
-python -m app.worker.correlator_worker
+python -m app.workers.poller_worker
+python -m app.workers.parser_worker
+python -m app.workers.correlator_worker
