@@ -31,11 +31,9 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('gmail_message_id', sa.String(), nullable=False),
         sa.Column('subject', sa.Text(), nullable=True),
-        sa.Column('sender', sa.String(), nullable=True),
-        sa.Column('recipient', sa.String(), nullable=True),
         sa.Column('body', sa.Text(), nullable=True),
-        sa.Column('received_at', sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column('processed_at', sa.TIMESTAMP(timezone=True), nullable=True),
+        sa.Column('internal_date', sa.TIMESTAMP(timezone=True), nullable=False),
+        sa.Column('received_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('gmail_message_id')
     )

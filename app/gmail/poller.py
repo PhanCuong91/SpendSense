@@ -2,7 +2,8 @@ import traceback
 from datetime import datetime, timezone
 from app.gmail.client import GmailClient
 from app.db.session import SessionLocal
-from app.db.models.email_raw import EmailRaw
+# Import models to ensure they're all registered
+from app.db.models import EmailRaw
 from app.workers.parser_worker import enqueue_for_parsing
 from app.core.config import settings
 from app.core.logging import get_logger

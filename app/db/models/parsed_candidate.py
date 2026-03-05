@@ -1,4 +1,3 @@
-
 import uuid
 from enum import Enum as PyEnum
 
@@ -14,6 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
+from app.db.models.correlation_link import CorrelationLink
 
 
 class DebitCredit(str, PyEnum):
@@ -44,14 +44,17 @@ class ParsedTransactionCandidate(Base):
 
     email_raw = relationship("EmailRaw", backref="parsed_candidate")
 
+    # Relationships to CorrelationLink
     correlation_links_debit = relationship(
         "CorrelationLink",
         back_populates="debit_candidate",
-        foreign_keys="CorrelationLink.debit_candidate_id",
+        foreign_keys=[CorrelationLink.debit_candidate_id],
+        viewonly=False,
     )
 
     correlation_links_credit = relationship(
         "CorrelationLink",
         back_populates="credit_candidate",
-        foreign_keys="CorrelationLink.credit_candidate_id",
+        foreign_keys=[CorrelationLink.credit_candidate_id],
+        viewonly=False,
     )
