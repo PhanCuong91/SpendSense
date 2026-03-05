@@ -734,3 +734,12 @@ erDiagram
     Event ||--o{ CorrelationLink : "links"
     EmailRaw ||--o{ ErrorLog : "errors"
     Event ||--o{ AuditLog : "audit entries"
+
+
+Run Locally:
+Python -m pip install -r requirements
+PYTHONPATH="$(pwd)" alembic upgrade head
+uviconrn app.main.aoo --reload --port 8000
+python -m app.worker.poller_worker
+python -m app.worker.parser_worker
+python -m app.worker.correlator_worker

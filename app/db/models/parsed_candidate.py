@@ -1,10 +1,12 @@
 
 import uuid
+from enum import Enum as PyEnum
+
 from sqlalchemy import (
     Column,
     String,
     Text,
-    Enum,
+    Enum as SQLEnum,
     Numeric,
     TIMESTAMP,
     ForeignKey,
@@ -14,7 +16,7 @@ from sqlalchemy.orm import relationship
 from app.db.base import Base
 
 
-class DebitCredit(str, Enum):
+class DebitCredit(str, PyEnum):
     debit = "debit"
     credit = "credit"
     spend = "spend"
@@ -36,7 +38,7 @@ class ParsedTransactionCandidate(Base):
     inferred_receiver = Column(String, nullable=True)
 
     raw_reference = Column(Text, nullable=True)
-    debit_credit = Column(Enum(DebitCredit), nullable=True)
+    debit_credit = Column(SQLEnum(DebitCredit), nullable=True)
 
     classification_hint = Column(String, nullable=True)
 

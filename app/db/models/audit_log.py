@@ -12,6 +12,6 @@ class AuditLog(Base):
 
     action = Column(String, nullable=False)   # 'reprocess', 'purge', 'rebuild'
     target_id = Column(UUID(as_uuid=True), nullable=True)
-    metadata = Column(JSON, nullable=True)
+    extra_data = Column(JSON, nullable=True)
 
     timestamp = Column(TIMESTAMP(timezone=True), server_default=func.now())

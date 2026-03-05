@@ -81,7 +81,7 @@ class EventBuilder:
             self._audit(
                 f"Created 1-email event of type {event_type}",
                 target_id=event.id,
-                metadata={"candidate_id": str(candidate_id)},
+                extra_data={"candidate_id": str(candidate_id)},
             )
 
             logger.info(f"EventBuilder: Created 1-email Event {event.id}")
@@ -100,8 +100,8 @@ class EventBuilder:
     # -------------------------------------------------------
     # Helpers
     # -------------------------------------------------------
-    def _audit(self, action, target_id=None, metadata=None):
-        audit = AuditLog(action=action, target_id=target_id, metadata=metadata)
+    def _audit(self, action, target_id=None, extra_data=None):
+        audit = AuditLog(action=action, target_id=target_id, extra_data=extra_data)
         self.session.add(audit)
         self.session.commit()
 
