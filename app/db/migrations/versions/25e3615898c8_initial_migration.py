@@ -42,16 +42,14 @@ def upgrade() -> None:
     # Create event table
     op.create_table('event',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('type', sa.String(), nullable=False),
-        sa.Column('amount', sa.Numeric(18, 2), nullable=True),
-        sa.Column('currency', sa.String(), nullable=True),
-        sa.Column('datetime_sgt', sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column('sender', sa.String(), nullable=True),
-        sa.Column('receiver', sa.String(), nullable=True),
-        sa.Column('reference', sa.Text(), nullable=True),
-        sa.Column('email_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
-        sa.ForeignKeyConstraint(['email_id'], ['email_raw.id'], ),
+        sa.Column('event_type', sa.String(), nullable=False),
+        sa.Column('sender', sa.String(), nullable=False),
+        sa.Column('receiver', sa.String(), nullable=False),
+        sa.Column('amount', sa.Numeric(18, 2), nullable=False),
+        sa.Column('currency', sa.String(), nullable=False),
+        sa.Column('datetime_sgt', sa.TIMESTAMP(timezone=True), nullable=False),
+        sa.Column('raw_email_ids', postgresql.JSON(), nullable=False),
+        sa.Column('description', sa.Text(), nullable=True),
         sa.PrimaryKeyConstraint('id')
     )
 

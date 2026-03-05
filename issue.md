@@ -9,6 +9,9 @@
 | Missing dependency: `ModuleNotFoundError: No module named 'dateutil'` | The parsing module imports `dateutil` library which was not listed in `requirements.txt`. | Added `python-dateutil` to `requirements.txt` and installed it with `pip install python-dateutil`. |
 | Circular import: `NameError: name 'CorrelationLink' is not defined` | `ParsedTransactionCandidate` model defined relationships to `CorrelationLink` but didn't import it, causing the relationship initialization to fail when SQLAlchemy tried to resolve the string reference. Additionally, two foreign keys between the same tables caused ambiguous join conditions. | Created `app/db/models/__init__.py` to import all models in the correct order, updated `ParsedTransactionCandidate` to import `CorrelationLink` directly, and used explicit column references in `foreign_keys` parameter: `foreign_keys=[CorrelationLink.debit_candidate_id]`. Updated `gmail/poller.py` to import models from the package. |
 | Database schema mismatch: `(psycopg2.errors.UndefinedColumn) column "error_type" of relation "error_log" does not exist` | The migration file had incorrect column names (`error_message`, `stack_trace`, `timestamp`) that didn't match the `ErrorLog` model which expected `error_type`, `stack`, and `created_at`. | Updated the migration file `25e3615898c8_initial_migration.py` to use the correct column names and types that match the `ErrorLog` model definition. Dropped and recreated the database with the corrected migration. |
+| Foreign key violation: `insert or update on table "error_log" violates foreign key constraint "error_log_email_id_fkey"` | The `ErrorLog` was being created with `email_id` set to the `ParsedTransactionCandidate.id` instead of the actual `email_id` from the candidate. This caused foreign key violations when the candidate ID didn't exist in the `email_raw` table. | Updated `EventBuilder._log_error()` to accept `email_id` parameter and pass `candidate.email_id` instead of `candidate_id`. |
+| Database schema mismatch: `(psycopg2.errors.UndefinedColumn) column "event_type" of relation "event" does not exist` | The migration file had incorrect column names and structure for the `event` table (`type` instead of `event_type`, nullable fields that should be required, single `email_id` instead of `raw_email_ids` JSON array). | Updated the migration file `25e3615898c8_initial_migration.py` to match the `Event` model: `event_type` (required), `sender`/`receiver` (required), `amount` (required), `currency` (required with default), `datetime_sgt` (required), `raw_email_ids` (JSON required), `description` (optional). Dropped and recreated the event table. |
+| AttributeError: `'NoneType' object has no attribute 'lower'` in classifier | The `classify()` function attempted to call `.lower()` on `inferred_sender` and `inferred_receiver` without checking if they were `None`, causing crashes when email parsing failed to extract sender/receiver information. | Added null checks in the rule matching logic: `if inferred_sender and inferred_receiver and rule["sender"].lower() == inferred_sender.lower() and rule["receiver"].lower() == inferred_receiver.lower()` to prevent calling `.lower()` on `None` values. |
 
 ## Summary
 
@@ -20,6 +23,9 @@ All issues were resolved through the following steps:
 5. **Missing dependencies**: Added `python-dateutil` to requirements and installed it
 6. **Circular imports**: Fixed import order by creating `app/db/models/__init__.py` and updating relationship definitions with explicit foreign key column references
 7. **Schema mismatch**: Updated ErrorLog migration columns from `error_message`/`stack_trace`/`timestamp` to match model: `error_type`/`stack`/`created_at`
+8. **Foreign key violation**: Fixed ErrorLog to use `candidate.email_id` instead of `candidate.id` for foreign key reference
+9. **Event table schema**: Corrected event table migration to match Event model with proper column names and constraints
+10. **Classification crash**: Added null checks in classifier to prevent calling `.lower()` on None values
 
 ## Current Status
 
@@ -28,7 +34,9 @@ All issues were resolved through the following steps:
 ✅ **Workers**: Can be started without import errors  
 ✅ **ORM models**: All models properly initialized with correct relationships  
 ✅ **No circular import issues**: Models load in proper dependency order
-✅ **Error logging**: ErrorLog table has correct columns and can store errors  
+✅ **Error logging**: ErrorLog table has correct columns and can store errors with valid foreign keys  
 ✅ **Worker processes**: Parser and poller workers can run and write to database
+✅ **Event creation**: Events are successfully created from parsed email candidates
+✅ **Classification**: Handles missing sender/receiver data gracefully without crashes
 
 

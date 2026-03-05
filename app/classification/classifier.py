@@ -51,6 +51,7 @@ def classify(parsed: dict):
     # ---------------------------------------------------------------------
     for rule in RULES:
         if (
+            inferred_sender and inferred_receiver and
             rule["sender"].lower() == inferred_sender.lower()
             and rule["receiver"].lower() == inferred_receiver.lower()
         ):

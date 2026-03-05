@@ -89,7 +89,7 @@ class EventBuilder:
             return event
 
         except Exception as e:
-            self._log_error(candidate_id, e)
+            self._log_error(candidate.email_id, e)
             logger.error(f"EventBuilder: Error building event: {e}")
             self.session.rollback()
             return None
@@ -105,9 +105,9 @@ class EventBuilder:
         self.session.add(audit)
         self.session.commit()
 
-    def _log_error(self, candidate_id, exception):
+    def _log_error(self, email_id, exception):
         err = ErrorLog(
-            email_id=candidate_id,
+            email_id=email_id,
             error_type="EventBuilderError",
             stack=str(exception),
         )
