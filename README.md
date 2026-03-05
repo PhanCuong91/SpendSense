@@ -739,7 +739,7 @@ erDiagram
 Run Locally:
 Python -m pip install -r requirements
 PYTHONPATH="$(pwd)" alembic upgrade head
-uviconrn app.main.aoo --reload --port 8000
+uvicorn app.main:app --reload --port 8000
 python -m app.worker.poller_worker
 python -m app.worker.parser_worker
 python -m app.worker.correlator_worker
