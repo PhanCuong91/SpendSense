@@ -1,29 +1,25 @@
 ACCOUNT_ALIAS_MAP = {
     "DBS": [
-        "DBS",
-        "DBS Multiplier Account",
-        "POSB",
-        "digibank",
-        "PayLah",
-        "PayLah! Wallet",
+        "ending 7013",
+    ],
+    "PayLah": [
+        "ending 3162"
     ],
 
     "Trust": [
         "Trust",
         "Trust App",
         "Trust Link",
-        "Trust Link card"
+        "Trust Link card",
+        "(NRIC ending 014U)"
     ],
 
     "ACB Online": [
         "ACB Online",
-        "<ACB Online Account>",
-        "ACB Online Account"
+        "WESTERN UNION",
     ],
 
     "ACB": [
         "ACB",
-        "<ACB Account>",
-        "ACB Account"
     ],
 }

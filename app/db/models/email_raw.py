@@ -10,7 +10,7 @@ class EmailRaw(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     gmail_message_id = Column(String, unique=True, index=True, nullable=False)
-
+    from_email = Column(Text, nullable=True)
     subject = Column(Text, nullable=True)
     body = Column(Text, nullable=True)
 

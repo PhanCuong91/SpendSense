@@ -37,10 +37,10 @@ class ParsedTransactionCandidate(Base):
     inferred_sender = Column(String, nullable=True)
     inferred_receiver = Column(String, nullable=True)
 
-    raw_reference = Column(Text, nullable=True)
-    debit_credit = Column(SQLEnum(DebitCredit), nullable=True)
+    # raw_reference = Column(Text, nullable=True)
+    debit_credit = Column(String, nullable=True)
 
-    classification_hint = Column(String, nullable=True)
+    type_info = Column(String, nullable=True)
 
     email_raw = relationship("EmailRaw", backref="parsed_candidate")
 

@@ -30,6 +30,7 @@ def upgrade() -> None:
     op.create_table('email_raw',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('gmail_message_id', sa.String(), nullable=False),
+        sa.Column('from_email', sa.Text(), nullable=True),
         sa.Column('subject', sa.Text(), nullable=True),
         sa.Column('body', sa.Text(), nullable=True),
         sa.Column('internal_date', sa.TIMESTAMP(timezone=True), nullable=False),
@@ -47,7 +48,7 @@ def upgrade() -> None:
         sa.Column('receiver', sa.String(), nullable=False),
         sa.Column('amount', sa.Numeric(18, 2), nullable=False),
         sa.Column('currency', sa.String(), nullable=False),
-        sa.Column('datetime_sgt', sa.TIMESTAMP(timezone=True), nullable=False),
+        sa.Column('datetime_sgt', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('raw_email_ids', postgresql.JSON(), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
         sa.PrimaryKeyConstraint('id')
@@ -73,9 +74,8 @@ def upgrade() -> None:
         sa.Column('datetime_sgt', sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column('inferred_sender', sa.String(), nullable=True),
         sa.Column('inferred_receiver', sa.String(), nullable=True),
-        sa.Column('raw_reference', sa.Text(), nullable=True),
         sa.Column('debit_credit', sa.Enum('debit', 'credit', 'spend', 'earn', name='debitcredit'), nullable=True),
-        sa.Column('classification_hint', sa.String(), nullable=True),
+        sa.Column('type_info', sa.String(), nullable=True),
         sa.ForeignKeyConstraint(['email_id'], ['email_raw.id'], ),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('email_id')
@@ -84,13 +84,15 @@ def upgrade() -> None:
     # Create correlation_link table
     op.create_table('correlation_link',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('event_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('debit_candidate_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('credit_candidate_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('correlation_type', sa.String(), nullable=False),
-        sa.Column('confidence_score', sa.Numeric(5, 4), nullable=True),
+        # sa.Column('correlation_type', sa.String(), nullable=False),
+        # sa.Column('confidence_score', sa.Numeric(5, 4), nullable=True),
         sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.ForeignKeyConstraint(['credit_candidate_id'], ['parsed_transaction_candidate.id'], ),
         sa.ForeignKeyConstraint(['debit_candidate_id'], ['parsed_transaction_candidate.id'], ),
+        sa.ForeignKeyConstraint(['event_id'], ['event.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
 

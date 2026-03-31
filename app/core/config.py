@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
 
+    DEBUG: bool = True
+
     class Config:
         env_file = ".env"
 

@@ -37,7 +37,10 @@ Next up, if you want:
 🔹 Integration tests for parser/classifier/correlator
 🔹 Prometheus metrics for correlation
 '''
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select, func, cast, Text
+import sqlalchemy
 from app.db.session import SessionLocal
 from app.db.models.event import Event
 from app.db.models.correlation_link import CorrelationLink
@@ -97,14 +100,58 @@ def _candidate_match_score(debit, credit):
     score += max(0, (settings.CORRELATION_WINDOW_MINUTES - diff_minutes) / 10)
 
     # Reference similarity
-    ref_sim = _reference_similarity(
-        debit.raw_reference,
-        credit.raw_reference,
-    )
-    score += ref_sim
+    # ref_sim = _reference_similarity(
+    #     debit.raw_reference,
+    #     credit.raw_reference,
+    # )
+    # score += ref_sim
 
     return score
 
+def delta_dates(d1, d2):
+    return abs((d1 - d2).total_seconds()) / 60.0
+
+def handle_unmatched_debits(debits):
+    """
+    For debits with no credit candidates, check if they are old enough and create InternalTransfer events.
+    """
+    session = SessionLocal()
+    try:
+        for debit in debits:
+            # Check if there are any Events with raw_email_ids containing this debit's email_id
+            subquery = select(
+                func.jsonb_array_elements_text(
+                    cast(Event.raw_email_ids, sqlalchemy.dialects.postgresql.JSONB)
+                )
+            ).scalar_subquery()
+
+            query = session.query(Event).filter(
+                cast(debit.email_id, Text).in_(subquery)
+            )
+            results = query.all()
+            if settings.DEBUG:
+                    print(f"Checking debit {debit.id} against Events with raw_email_ids containing {debit.email_id}, found {len(results)} events")
+            if len(results) == 0 and delta_dates(debits[0].datetime_sgt, datetime.now(timezone.utc)) > 120:
+                if settings.DEBUG:
+                        print(f"Creating Event for debit {debit.email_id} with no credit candidates, amount {debit.amount}, sender {debit.inferred_sender}, receiver {debit.inferred_receiver}")
+                event = Event(
+                    event_type="InternalTransfer",
+                    sender=debit.inferred_sender,
+                    receiver=debit.inferred_receiver,
+                    amount=debit.amount,
+                    currency=debit.currency,
+                    datetime_sgt=debit.datetime_sgt,
+                    raw_email_ids=[str(debit.email_id)],
+                    description=f"Matched debit {debit.id} with no credit candidates, creating InternalTransfer event",
+                )
+                session.add(event)
+                session.commit()
+    except Exception as e:
+        logger.error(f"Error handling unmatched debits: {e}")
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 def correlate_once():
     """
@@ -119,9 +166,15 @@ def correlate_once():
     try:
         debits = PendingStore.get_pending(session, DebitCredit.debit)
         credits = PendingStore.get_pending(session, DebitCredit.credit)
-
-        if not debits or not credits:
+        if settings.DEBUG:
+            print(f"Pending debits: {len(debits)}, credits: {len(credits)}")
+        if not debits and not credits:
             logger.info("Correlator: nothing to match.")
+            return
+        # Handle remaining candidates with InternalTransfer type_info
+        if len(credits) == 0 and len(debits) > 0:
+            logger.info("Correlator: no credit candidates, checking unmatched debits for InternalTransfer events.")
+            handle_unmatched_debits(debits)
             return
 
         logger.info(f"Correlator: pending debits={len(debits)}, credits={len(credits)}")
@@ -155,7 +208,8 @@ def correlate_once():
             used_debits.add(d.id)
             used_credits.add(c.id)
             final_pairs.append((d, c))
-
+        if settings.DEBUG:
+            print(f"Final matched pairs: {(final_pairs)}")
         if not final_pairs:
             logger.info("Correlator: no successful matches.")
             return
@@ -171,6 +225,8 @@ def correlate_once():
                 raw_email_ids=[str(debit.email_id), str(credit.email_id)],
                 description=f"Matched debit {debit.id} + credit {credit.id}",
             )
+            if settings.DEBUG:
+                print(f"Creating Event for debit {debit.id} and credit {credit.id} with amount {debit.amount} and sender {debit.inferred_sender} and receiver {credit.inferred_receiver}")
             session.add(event)
             session.commit()
 

@@ -45,6 +45,7 @@ class EventBuilder:
                 "inferred_sender": candidate.inferred_sender,
                 "inferred_receiver": candidate.inferred_receiver,
                 "debit_credit": candidate.debit_credit,
+                "type_info": candidate.type_info,
             })
 
             event_type = cls["eventType"]
@@ -62,8 +63,14 @@ class EventBuilder:
                 return None
 
             # -------------------------------------------------------
-            # Build 1-email Event
+            # Build 1-email Event (validate sender/receiver)
             # -------------------------------------------------------
+            if sender is None or receiver is None:
+                logger.error(f"EventBuilder: Cannot create Event, sender or receiver is None (candidate_id={candidate_id}, sender={sender}, receiver={receiver})")
+                self._log_error(candidate.email_id, f"Missing sender or receiver: sender={sender}, receiver={receiver}")
+                self.session.rollback()
+                return None
+
             event = Event(
                 event_type=event_type,
                 sender=sender,

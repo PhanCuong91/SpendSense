@@ -12,6 +12,7 @@
 | Foreign key violation: `insert or update on table "error_log" violates foreign key constraint "error_log_email_id_fkey"` | The `ErrorLog` was being created with `email_id` set to the `ParsedTransactionCandidate.id` instead of the actual `email_id` from the candidate. This caused foreign key violations when the candidate ID didn't exist in the `email_raw` table. | Updated `EventBuilder._log_error()` to accept `email_id` parameter and pass `candidate.email_id` instead of `candidate_id`. |
 | Database schema mismatch: `(psycopg2.errors.UndefinedColumn) column "event_type" of relation "event" does not exist` | The migration file had incorrect column names and structure for the `event` table (`type` instead of `event_type`, nullable fields that should be required, single `email_id` instead of `raw_email_ids` JSON array). | Updated the migration file `25e3615898c8_initial_migration.py` to match the `Event` model: `event_type` (required), `sender`/`receiver` (required), `amount` (required), `currency` (required with default), `datetime_sgt` (required), `raw_email_ids` (JSON required), `description` (optional). Dropped and recreated the event table. |
 | AttributeError: `'NoneType' object has no attribute 'lower'` in classifier | The `classify()` function attempted to call `.lower()` on `inferred_sender` and `inferred_receiver` without checking if they were `None`, causing crashes when email parsing failed to extract sender/receiver information. | Added null checks in the rule matching logic: `if inferred_sender and inferred_receiver and rule["sender"].lower() == inferred_sender.lower() and rule["receiver"].lower() == inferred_receiver.lower()` to prevent calling `.lower()` on `None` values. |
+| EventBuilder NotNullViolation Issue | The `event` table requires `sender` and `receiver` fields to be non-null. The parser or classifier sometimes fails to extract these fields, resulting in `None` values. Attempting to create an Event with missing sender/receiver violates the database constraint and causes a transaction rollback. The log shows that EventBuilder attempted to create events with missing sender/receiver multiple times. | Add validation in `EventBuilder.process_candidate()` to check if `sender` or `receiver` is `None` before creating an Event. If either is missing, log an error and skip event creation. This prevents database constraint violations and ensures only valid events are created. |
 
 ## Summary
 
@@ -26,6 +27,7 @@ All issues were resolved through the following steps:
 8. **Foreign key violation**: Fixed ErrorLog to use `candidate.email_id` instead of `candidate.id` for foreign key reference
 9. **Event table schema**: Corrected event table migration to match Event model with proper column names and constraints
 10. **Classification crash**: Added null checks in classifier to prevent calling `.lower()` on None values
+11. **EventBuilder NotNullViolation**: Added validation in `process_candidate()` to check for missing sender/receiver
 
 ## Current Status
 

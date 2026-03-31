@@ -1,0 +1,165 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta content="telephone=no" name="format-detection">
+<title>Transaction Alerts</title>
+<style type="text/css">
+body {
+	background-color: #ffffff;
+	margin: 0;
+	padding: 0;
+	-webkit-font-smoothing: antialiased;
+	font-family: Arial;
+	-webkit-text-size-adjust: none;
+	-ms-text-size-adjust: none;
+}
+/* Fixes for Links catering to mobile devices */
+.androidWhite, .appleLinks a, .appleLinksWhite a {
+	color: #ffffff !important;
+	text-decoration: none;
+}
+.appleLinks a, .appleLinksDark a {
+	color: #444444 !important;
+	text-decoration: none;
+}
+/* End:Common Style Fixes */
+
+/*
+* Start:: Custom Styles 
+* Note: You may make any necessary changes here
+*/
+/* DBS Custom styles*/
+.text-link-1, .text-link-1:hover, .text-link-1:visited {
+	color: #000000;
+	text-decoration: none;
+}
+.text-link-2, .text-link-2:hover, .text-link-2:visited {
+	color: #ed1c24;
+	text-decoration: none;
+}
+/*
+sup {
+   vertical-align: baseline;
+   position: relative;
+   top: -0.4em;
+}
+*/
+/* To switch brand bar on mobile */
+@media only screen and (max-width: 480px) {
+body .fullsize {
+	width: 100%;
+	height: auto;
+}
+body .contenttable {
+	width: 100%;
+	padding-left: 5px !important;
+	padding-right: 5px !important;
+}
+body .contenttablemobile {
+	width: 100%;
+	font-size: 8px !important;
+	padding-left: 0px !important;
+	padding-right: 0px !important;
+}
+body .deviceWidth {
+	width: 100%;
+}
+body .redbutton {
+	width: 80%;
+	height: 40px !important;
+	font-size: 20px !important;
+	font-weight: normal !important;
+}
+body .redbuttonWrapper {
+	width: 100%;
+	padding: 10px 0px !important;
+}
+body .social-image-resize {
+	width: auto !important;
+	padding-left: 5px !important;
+	padding-right: 0px !important;
+}
+body .add-bottom-padding-30 {
+	padding-bottom: 30px !important;
+}
+body .spacer_cards {
+	padding: 0px 0px 0px 0px !important;
+	text-align: center !important;
+}
+body .socialicon {
+	width: 60% !important;
+	height: auto !important;
+	text-align: left;
+}
+body .trinity-logo {
+	width: 0px !important;
+	height: 0px !important;
+	overflow: hidden !important;
+}
+body .dbscards {
+	width: 100%;
+	height: auto !important;
+}
+}
+</style>
+</head>
+<body leftmargin="0" topmargin="0" marginwidth="0" marginheight="0" yahoo="fix" style="-webkit-text-size-adjust:none;-ms-text-size-adjust: 100%;"><center>
+<table border="0" align="center" cellpadding="0" cellspacing="0" width="600" style="border: 1px solid #cccccc; background-color: #ffffff; max-width: 600px;" bgcolor="#ffffff" class="deviceWidth"><!-- Start: Unable to view link -->
+<tbody>
+<tr>
+<td align="center" height="50" style="valign: middle; vertical-align: middle; text-align: center; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #303030; padding: 10px 20px;" class="contenttable">Transaction Alerts<br /> Problems viewing this email? Select "always display images". <!-- MUST BE DIFFERENT FROM TITLE --></td>
+</tr>
+<!-- End: Unable to view link --> <!-- Start: Header - Brand Bar New -->
+<tr>
+<td width="100%">
+<table width="100%" border="0" align="center" cellpadding="0" cellspacing="0" class="deviceWidth">
+<tbody>
+<tr>
+<td align="left" width="50%;" height="64"><img src="https://www.dbs.com.sg/personal/edm/template2018/dbs/images/brand-badge.jpg" alt="DBS" width="192" height="64" border="0" class="fullsize" style="display: block; border: none; float: left;" /></td>
+<td align="right" width="50%;" valign="middle" style="border-spacing: 0px; border-collapse: collapse; vertical-align: middle; font-size: 0; mso-table-lspace: 0; mso-table-rspace: 0;">
+<p style="margin: 0 10px; padding: 0; line-height: 12px;"></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<!-- End: Header - Brand Bar New --> <!-- End: Masthead --> <!-- Start: CTA Top area, mandatory to place one important CTA here for usability --> <!-- End: CTA Top area, mandatory to place one important CTA here for usability --> <!-- Start: Body Copy 1 -->
+<tr>
+<td width="100%" style="font-family: Arial; font-size: 16px; line-height: 1.2em; color: #444444; text-align: left; padding: 10px 20px;" class="contenttable" align="left"><br /> Transaction Ref: PLPE4606309161802928</td>
+</tr>
+<!-- End: Body Copy 1 --> <!-- Start: Body Copy 1 -->
+<tr>
+<td width="100%" style="font-family: Arial; font-size: 16px; line-height: 1.2em; color: #444444; text-align: left; padding: 10px 20px;" class="contenttable" align="left"><br /> Dear Sir / Madam, <br /> </td>
+</tr>
+<!-- End: Body Copy 1 --> <!-- Start: Body Copy 2 -->
+<tr>
+<td width="100%" style="font-family: Arial; font-size: 16px; line-height: 1.2em; color: #444444; text-align: left; padding: 10px 20px;" align="left" class="contenttable">We refer to your PayLah! Scan & Pay Transfer dated 04 Mar. We are pleased to confirm that the transaction was completed. <br /> <br />
+<table>
+<tbody>
+<tr>
+<td>Date &amp; Time:</td>
+<td>04 Mar 11:46 (SGT)</td>
+</tr>
+<tr>
+<td>Amount:</td>
+<td>SGD8.80</td>
+</tr>
+<tr>
+<td>From:</td>
+<td>PayLah! Wallet (Mobile ending 3162)</td>
+</tr>
+<tr>
+<td>To:</td>
+<td>TIEN TSIN CUISINES 2000</td>
+</tr>
+</tbody>
+</table>
+<br /> To view your transactions, login to your PayLah! Wallet and select &ldquo;History&rdquo; at the bottom bar of the Home page. To manage your PayLah! notifications, select &ldquo;Settings&rdquo; then &ldquo;Manage Notifications&rdquo;. <br /> <br /> Please call DBS hotline immediately if this was an unauthorised transaction. <br /> <br /> Thank you for banking with us.<br /> <br /> Yours faithfully<br /> DBS Bank Ltd <br /> <br /><br />This is an auto-generated message. Please do not reply to this email.���<br /> </td>
+</tr>
+<!-- End: Body Copy 1 --> <!-- Start: Multiple Promo --> <!-- End: CTA --> <!-- Start: TNC and Social Links --> <!-- End: TNC and Social Links --> <!-- End: SG50 --> <!-- Start: Cards --></tbody>
+</table>
+<!-- End: Footer copy 1 --></center></body>
+</html>
