@@ -45,5 +45,5 @@ services:
 EOF
 
 # Pull and run
-aws ecr get-login-password --region ${aws_region} | sudo docker login --username AWS --password-stdin ${ecr_repo_url}
+aws ecr get-login-password --region ${aws_region} | sudo docker login --username AWS --password-stdin ${ecr_registry}
 sudo docker compose -f /opt/spendsense/docker-compose.yaml up -d
