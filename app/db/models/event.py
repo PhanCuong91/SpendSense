@@ -6,16 +6,16 @@ from sqlalchemy import (
     Numeric,
     TIMESTAMP,
     JSON,
+    Uuid,
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 
 
 class Event(Base):
     __tablename__ = "event"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     event_type = Column(String, nullable=False)    # Spend, Earn, InternalTransfer
     sender = Column(String, nullable=False)

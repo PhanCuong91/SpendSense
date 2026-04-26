@@ -72,7 +72,7 @@ class GmailPoller:
                         # skip the email if it matches any bank keyword in the sender's email address
                         continue
                     subject, body = self.client.decode_email(raw_payload,msg_id)
-                    logger.info(f"Decoded email {msg_id} - Subject: {subject}, Body length: {len(body)}")
+                    # logger.info(f"Decoded email {msg_id} - Subject: {subject}, Body length: {len(body)}")
 
                     # Store into DB
                     email_row = EmailRaw(

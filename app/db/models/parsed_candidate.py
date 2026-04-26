@@ -9,8 +9,8 @@ from sqlalchemy import (
     Numeric,
     TIMESTAMP,
     ForeignKey,
+    Uuid,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 from app.db.models.correlation_link import CorrelationLink
@@ -26,9 +26,9 @@ class DebitCredit(str, PyEnum):
 class ParsedTransactionCandidate(Base):
     __tablename__ = "parsed_transaction_candidate"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    email_id = Column(UUID(as_uuid=True), ForeignKey("email_raw.id"), unique=True, nullable=False)
+    email_id = Column(Uuid(as_uuid=True), ForeignKey("email_raw.id"), unique=True, nullable=False)
 
     amount = Column(Numeric(18, 2), nullable=True)
     currency = Column(String, nullable=True, default="SGD")

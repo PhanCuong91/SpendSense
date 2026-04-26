@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     GMAIL_TOKEN_PATH: str = "token.json"
 
     # Pipeline Configuration
-    POLL_INTERVAL_SECONDS: int = 60
+    POLL_INTERVAL_SECONDS: int = 300
     CORRELATION_WINDOW_MINUTES: int = 15
 
     # Logging

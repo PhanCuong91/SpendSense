@@ -6,7 +6,6 @@ Create Date: 2026-03-05 21:31:00.000000
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic
 revision = '25e3615898c8'
@@ -18,23 +17,23 @@ depends_on = None
 def upgrade() -> None:
     # Create audit_log table
     op.create_table('audit_log',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', sa.Uuid(as_uuid=True), nullable=False),
         sa.Column('action', sa.String(), nullable=False),
-        sa.Column('target_id', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column('target_id', sa.Uuid(as_uuid=True), nullable=True),
         sa.Column('extra_data', sa.JSON(), nullable=True),
-        sa.Column('timestamp', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
+        sa.Column('timestamp', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
         sa.PrimaryKeyConstraint('id')
     )
 
     # Create email_raw table
     op.create_table('email_raw',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', sa.Uuid(as_uuid=True), nullable=False),
         sa.Column('gmail_message_id', sa.String(), nullable=False),
         sa.Column('from_email', sa.Text(), nullable=True),
         sa.Column('subject', sa.Text(), nullable=True),
         sa.Column('body', sa.Text(), nullable=True),
         sa.Column('internal_date', sa.TIMESTAMP(timezone=True), nullable=False),
-        sa.Column('received_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
+        sa.Column('received_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('gmail_message_id')
     )
@@ -42,33 +41,33 @@ def upgrade() -> None:
 
     # Create event table
     op.create_table('event',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', sa.Uuid(as_uuid=True), nullable=False),
         sa.Column('event_type', sa.String(), nullable=False),
         sa.Column('sender', sa.String(), nullable=False),
         sa.Column('receiver', sa.String(), nullable=False),
         sa.Column('amount', sa.Numeric(18, 2), nullable=False),
         sa.Column('currency', sa.String(), nullable=False),
-        sa.Column('datetime_sgt', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('raw_email_ids', postgresql.JSON(), nullable=False),
+        sa.Column('datetime_sgt', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+        sa.Column('raw_email_ids', sa.JSON(), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
         sa.PrimaryKeyConstraint('id')
     )
 
     # Create error_log table
     op.create_table('error_log',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('email_id', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column('id', sa.Uuid(as_uuid=True), nullable=False),
+        sa.Column('email_id', sa.Uuid(as_uuid=True), nullable=True),
         sa.Column('error_type', sa.String(), nullable=False),
         sa.Column('stack', sa.Text(), nullable=False),
-        sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
+        sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
         sa.ForeignKeyConstraint(['email_id'], ['email_raw.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
 
     # Create parsed_transaction_candidate table
     op.create_table('parsed_transaction_candidate',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('email_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', sa.Uuid(as_uuid=True), nullable=False),
+        sa.Column('email_id', sa.Uuid(as_uuid=True), nullable=False),
         sa.Column('amount', sa.Numeric(18, 2), nullable=True),
         sa.Column('currency', sa.String(), nullable=True),
         sa.Column('datetime_sgt', sa.TIMESTAMP(timezone=True), nullable=True),
@@ -83,13 +82,13 @@ def upgrade() -> None:
 
     # Create correlation_link table
     op.create_table('correlation_link',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('event_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('debit_candidate_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('credit_candidate_id', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column('id', sa.Uuid(as_uuid=True), nullable=False),
+        sa.Column('event_id', sa.Uuid(as_uuid=True), nullable=False),
+        sa.Column('debit_candidate_id', sa.Uuid(as_uuid=True), nullable=True),
+        sa.Column('credit_candidate_id', sa.Uuid(as_uuid=True), nullable=True),
         # sa.Column('correlation_type', sa.String(), nullable=False),
         # sa.Column('confidence_score', sa.Numeric(5, 4), nullable=True),
-        sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
+        sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
         sa.ForeignKeyConstraint(['credit_candidate_id'], ['parsed_transaction_candidate.id'], ),
         sa.ForeignKeyConstraint(['debit_candidate_id'], ['parsed_transaction_candidate.id'], ),
         sa.ForeignKeyConstraint(['event_id'], ['event.id'], ),

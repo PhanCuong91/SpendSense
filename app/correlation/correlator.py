@@ -39,8 +39,6 @@ Next up, if you want:
 '''
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, func, cast, Text
-import sqlalchemy
 from app.db.session import SessionLocal
 from app.db.models.event import Event
 from app.db.models.correlation_link import CorrelationLink
@@ -51,12 +49,25 @@ from app.db.models.parsed_candidate import (
 from app.correlation.state_machine import PendingStore
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.timezone import SGT
 
 logger = get_logger(__name__)
 
 
+def _normalize_datetime(dt: datetime) -> datetime:
+    if dt is None:
+        return None
+
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        return dt.replace(tzinfo=SGT)
+
+    return dt
+
+
 def _time_diff_minutes(t1, t2):
-    return abs((t1 - t2).total_seconds()) / 60.0
+    t1_normalized = _normalize_datetime(t1)
+    t2_normalized = _normalize_datetime(t2)
+    return abs((t1_normalized - t2_normalized).total_seconds()) / 60.0
 
 
 def _reference_similarity(ref1, ref2):
@@ -109,7 +120,15 @@ def _candidate_match_score(debit, credit):
     return score
 
 def delta_dates(d1, d2):
-    return abs((d1 - d2).total_seconds()) / 60.0
+    d1_normalized = _normalize_datetime(d1)
+    d2_normalized = _normalize_datetime(d2)
+
+    if not d1_normalized or not d2_normalized:
+        return float("inf")
+
+    d1_utc = d1_normalized.astimezone(timezone.utc)
+    d2_utc = d2_normalized.astimezone(timezone.utc)
+    return abs((d1_utc - d2_utc).total_seconds()) / 60.0
 
 def handle_unmatched_debits(debits):
     """
@@ -117,18 +136,15 @@ def handle_unmatched_debits(debits):
     """
     session = SessionLocal()
     try:
-        for debit in debits:
-            # Check if there are any Events with raw_email_ids containing this debit's email_id
-            subquery = select(
-                func.jsonb_array_elements_text(
-                    cast(Event.raw_email_ids, sqlalchemy.dialects.postgresql.JSONB)
-                )
-            ).scalar_subquery()
+        existing_events = session.query(Event.id, Event.raw_email_ids).all()
 
-            query = session.query(Event).filter(
-                cast(debit.email_id, Text).in_(subquery)
-            )
-            results = query.all()
+        for debit in debits:
+            debit_email_id = str(debit.email_id)
+            results = [
+                event_id
+                for event_id, raw_email_ids in existing_events
+                if isinstance(raw_email_ids, list) and debit_email_id in [str(value) for value in raw_email_ids]
+            ]
             if settings.DEBUG:
                     print(f"Checking debit {debit.id} against Events with raw_email_ids containing {debit.email_id}, found {len(results)} events")
             if len(results) == 0 and delta_dates(debits[0].datetime_sgt, datetime.now(timezone.utc)) > 120:

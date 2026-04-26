@@ -1,1 +1,4 @@
 *.pyc
+
+/decoded_*.json
+/full_msg_*.json
