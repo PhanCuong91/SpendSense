@@ -765,3 +765,17 @@ export:
 docker exec -it tx-postgres pg_dump -U user -d txdb > db_backup.sql
 import:
 docker exec -i tx-postgres psql -U user -d txdb < db_backup.sql
+
+
+docker build -t spend_sense:1.0.3 .
+docker run -d spend_sense:1.0.3 sleep infinity 
+docker run --env-file .env -v ./credentials.json:/app/credentials.json:ro -v ./token.json:/app/token.json:ro -d spend_sense:1.0.3 sleep infinity
+
+docker exec -it $(docker run --env-file .env -v ./credentials.json:/app/credentials.json:ro -v ./token.json:/app/token.json:ro -d spend_sense:1.0.3 sleep infinity) bash
+
+docker exec -it amazing_goodall  bash 
+docker stop $(docker ps -q)
+
+python3 -m app.workers.poller_worker
+
+token need be regenerated sometimes.

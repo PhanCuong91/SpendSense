@@ -1,5 +1,5 @@
 
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 ARG APP_VERSION=dev
 ARG VCS_REF=local
@@ -21,7 +21,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY app ./app
 
 # Run as non-root user for better container isolation.
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
@@ -34,4 +34,4 @@ ENV APP_ROLE=api
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "case \"$APP_ROLE\" in poller) python -m app.workers.poller_worker ;; correlator) python -m app.workers.correlator_worker ;; api|*) uvicorn app.main:app --host 0.0.0.0 --port 8000 ;; esac"]
+CMD ["sh", "-c", "python -m app.workers.poller_worker  --host 0.0.0.0 --port 8000"]
