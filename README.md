@@ -773,9 +773,11 @@ docker run --env-file .env -v ./credentials.json:/app/credentials.json:ro -v ./t
 
 docker exec -it $(docker run --env-file .env -v ./credentials.json:/app/credentials.json:ro -v ./token.json:/app/token.json:ro -d spend_sense:1.0.3 sleep infinity) bash
 
+docker exec -it $(docker run --env-file .env -v ./credentials.json:/app/credentials.json:ro -v ./token.json:/app/token.json:ro -e DATABASE_URL=sqlite:///./data/txdb.sqlite3 -v "$(pwd)/data:/app/data" -d spend_sense:1.0.3 sleep infinity) bash
+-e MY_VAR="my_value"
 docker exec -it amazing_goodall  bash 
 docker stop $(docker ps -q)
-
+docker run --rm -it -p 8000:8000 -e DATABASE_URL=sqlite:///./data/txdb.sqlite3 -v "$(pwd)/data:/app/data" spendsense:dev
 python3 -m app.workers.poller_worker
 
 token need be regenerated sometimes.

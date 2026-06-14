@@ -13,8 +13,13 @@ def load_credentials() -> Credentials:
     token_path = settings.GMAIL_TOKEN_PATH
     creds = None
 
-    # Load existing token
-    if os.path.exists(token_path):
+    # Prefer secret JSON values when provided via environment / ECS secrets.
+    token_json = settings.GMAIL_TOKEN_JSON
+    credentials_json = settings.GMAIL_CREDENTIALS_JSON
+
+    if token_json:
+        creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
+    elif os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, SCOPES)
 
     # Refresh token if expired
@@ -23,13 +28,22 @@ def load_credentials() -> Credentials:
 
     # First-time OAuth flow
     if not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file(
-            settings.GMAIL_CREDENTIALS_PATH, SCOPES
-        )
+        if credentials_json:
+            client_config = json.loads(credentials_json)
+            flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                settings.GMAIL_CREDENTIALS_PATH, SCOPES
+            )
+
         creds = flow.run_local_server(port=0)
 
-        # Persist token
-        with open(token_path, "w") as f:
-            f.write(creds.to_json())
+        # Persist token only when not using secret JSON token input.
+        if token_json is None and token_path:
+            try:
+                with open(token_path, "w") as f:
+                    f.write(creds.to_json())
+            except OSError:
+                pass
 
     return creds
