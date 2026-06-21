@@ -3,7 +3,7 @@ name: Comprehensive PR Pipeline
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed, labeled]
-    branches: [main]
+    branches: [master]
 
 jobs:
   # 1. This job runs when the PR is labeled with "check"
@@ -39,7 +39,7 @@ jobs:
       - name: Run Merge Label Deployment
         run: echo "Preparing deployment for merge label..."
 
-  # 2. This job executes ONLY when a PR is formally merged to main
+  # 2. This job executes ONLY when a PR is formally merged to master
   production-deployment:
     if: github.event.action == 'closed' && github.event.pull_request.merged == true
     runs-on: ubuntu-latest
