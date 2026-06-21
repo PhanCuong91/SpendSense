@@ -1,6 +1,6 @@
 from app.classification.rule_table import RULES
 from app.parsing.account_alias_map import ACCOUNT_ALIAS_MAP
-
+from app.core.config import settings
 
 def normalize_party(party: str):
     """Normalize inferred sender/receiver to canonical name."""
@@ -21,15 +21,19 @@ def classify(parsed: dict):
     """
     Determine the eventType + emailCountRequired using deterministic rules.
     """
-
-    inferred_sender = normalize_party(parsed.get("inferred_sender"))
-    inferred_receiver = normalize_party(parsed.get("inferred_receiver"))
+    if settings.DEBUG:
+        print(f"Classify input: {parsed}")
+    inferred_sender = (parsed.get("inferred_sender"))
+    inferred_receiver = (parsed.get("inferred_receiver"))
     debit_credit = parsed.get("debit_credit")  # debit, credit, spend, earn
+    type_info = parsed.get("type_info")  # additional info from parser (eg "spend" if we are sure it's a spend)
 
     # ---------------------------------------------------------------------
     # Step 1: 1-email Spend/Earn determination from debit_credit
     # ---------------------------------------------------------------------
-    if debit_credit in ("spend", "debit"):
+    if settings.DEBUG:
+        print(f"Classifying with: inferred_sender={inferred_sender}, inferred_receiver={inferred_receiver}, debit_credit={debit_credit}, type_info={type_info}")    
+    if debit_credit in ("debit") and type_info == "spend":
         return {
             "eventType": "Spend",
             "sender": inferred_sender,
@@ -37,7 +41,7 @@ def classify(parsed: dict):
             "emailCountRequired": 1,
         }
 
-    if debit_credit in ("earn", "credit"):
+    if debit_credit in ("credit") and type_info == "earn":
         # Earn → income into your account (eg DBS account)
         return {
             "eventType": "Earn",
@@ -45,46 +49,11 @@ def classify(parsed: dict):
             "receiver": inferred_receiver,
             "emailCountRequired": 1,
         }
-
-    # ---------------------------------------------------------------------
-    # Step 2: Match deterministic rules (2-email InternalTransfer cases)
-    # ---------------------------------------------------------------------
-    for rule in RULES:
-        if (
-            rule["sender"].lower() == inferred_sender.lower()
-            and rule["receiver"].lower() == inferred_receiver.lower()
-        ):
-            return {
-                "eventType": rule["eventType"],
-                "sender": inferred_sender,
-                "receiver": inferred_receiver,
-                "emailCountRequired": rule["emailCountRequired"],
-            }
-
-    # ---------------------------------------------------------------------
-    # Step 3: Fallback classification
-    # ---------------------------------------------------------------------
-    # If ambiguous: treat debit as Spend, credit as Earn
-    if debit_credit == "debit":
+    if type_info == "InternalTransfer":
+        # InternalTransfer → money out of one account (eg ACB Online) into another account you own (eg DBS)
         return {
-            "eventType": "Spend",
+            "eventType": "InternalTransfer",
             "sender": inferred_sender,
             "receiver": inferred_receiver,
-            "emailCountRequired": 1,
+            "emailCountRequired": 2,
         }
-
-    if debit_credit == "credit":
-        return {
-            "eventType": "Earn",
-            "sender": inferred_sender,
-            "receiver": inferred_receiver,
-            "emailCountRequired": 1,
-        }
-
-    # Completely unknown → bucket to Spend (safe fallback)
-    return {
-        "eventType": "Spend",
-        "sender": inferred_sender,
-        "receiver": inferred_receiver,
-        "emailCountRequired": 1,
-    }

@@ -11,5 +11,6 @@ class ParsedCandidateOut(BaseModel):
     datetime_sgt: Optional[datetime]
     inferred_sender: Optional[str]
     inferred_receiver: Optional[str]
-    raw_reference: Optional[str]
+    # raw_reference: Optional[str]
     debit_credit: Optional[str]
+    type_info: Optional[str]

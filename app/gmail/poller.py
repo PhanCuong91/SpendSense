@@ -1,23 +1,48 @@
 import traceback
 from datetime import datetime, timezone
 from app.gmail.client import GmailClient
-from app.db.session import SessionLocal
-from app.db.models.email_raw import EmailRaw
+from app.db.base import Base
+from app.db.session import SessionLocal, engine
+from sqlalchemy import inspect
+# Import models to ensure they're all registered
+from app.db.models import EmailRaw
 from app.workers.parser_worker import enqueue_for_parsing
 from app.core.config import settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, save_to_file
 
 logger = get_logger(__name__)
-
+bank_emails = ["mailalert@acb.com.vn", "ibanking.alert@dbs.com", "paylah.alert@dbs.com", "from_us@trustbank.sg"]
 
 class GmailPoller:
-    QUERY = "newer_than:3d"   # configurable Gmail search query
+    QUERY = "newer_than:1d"   # configurable Gmail search query
 
     def __init__(self):
         self.client = GmailClient()
 
+    def get_subject(self, payload):
+        """Extract subject from Gmail message payload."""
+        data = urlsafe_b64decode(payload.encode("UTF-8"))
+        email_msg = message_from_bytes(data)
+        return email_msg.get("Subject", "")
+
+    def from_bank_email(self, sender_email):
+        """Check if the email is from a bank based on predefined keywords."""
+        for keyword in bank_emails:
+            if keyword in sender_email.lower():
+                return True
+        return False
+
     def poll_once(self):
         logger.info("Starting Gmail poll cycle…")
+        
+        # Ensure the `email_raw` table exists; create it if missing.
+        try:
+            inspector = inspect(engine)
+            if not inspector.has_table(EmailRaw.__tablename__):
+                Base.metadata.create_all(bind=engine, tables=[EmailRaw.__table__], checkfirst=True)
+                logger.info(f"Created missing table {EmailRaw.__tablename__}")
+        except Exception as e:
+            logger.error(f"Error ensuring table {EmailRaw.__tablename__} exists: {e}")
 
         session = SessionLocal()
         try:
@@ -28,10 +53,10 @@ class GmailPoller:
                 if "messages" not in response:
                     logger.info("No Gmail messages found for this cycle.")
                     break
-
+                logger.info(f"Found {len(response['messages'])} messages in this batch.")
                 for msg in response["messages"]:
                     msg_id = msg["id"]
-
+                    skip = False
                     # Idempotency check — avoid re-inserting
                     exists = (
                         session.query(EmailRaw)
@@ -43,28 +68,27 @@ class GmailPoller:
 
                     # Fetch message
                     full_msg = self.client.get_message(msg_id)
+                    # if settings.DEBUG:
+                        # save_to_file(full_msg, f"full_msg_{msg_id}.json")
 
                     internal_ts = int(full_msg.get("internalDate", 0)) / 1000
                     internal_date = datetime.fromtimestamp(
                         internal_ts, tz=timezone.utc
-                    )
+                    ).astimezone(datetime.now().astimezone().tzinfo)
 
-                    # Extract payload
-                    parts = full_msg.get("payload", {}).get("parts", [])
-                    if not parts:
-                        logger.warning(f"No parts found for message {msg_id}")
+                    raw_payload = full_msg.get("payload", {})
+                    from_email = next((h["value"] for h in raw_payload.get("headers", []) if h["name"] == "From"), "")
+
+                    if not self.from_bank_email(from_email):
+                        # skip the email if it matches any bank keyword in the sender's email address
                         continue
-
-                    raw_data = parts[0]["body"].get("data")
-                    if not raw_data:
-                        logger.warning(f"No data encoded for {msg_id}")
-                        continue
-
-                    subject, body = self.client.decode_email(raw_data)
+                    subject, body = self.client.decode_email(raw_payload,msg_id)
+                    # logger.info(f"Decoded email {msg_id} - Subject: {subject}, Body length: {len(body)}")
 
                     # Store into DB
                     email_row = EmailRaw(
                         gmail_message_id=msg_id,
+                        from_email=from_email,
                         subject=subject,
                         body=body,
                         internal_date=internal_date,

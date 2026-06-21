@@ -734,3 +734,50 @@ erDiagram
     Event ||--o{ CorrelationLink : "links"
     EmailRaw ||--o{ ErrorLog : "errors"
     Event ||--o{ AuditLog : "audit entries"
+
+
+Run Locally:
+install Docker desktop
+docker compose up -d db
+
+Python -m pip install -r requirements
+PYTHONPATH="$(pwd)" alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+python -m app.workers.poller_worker
+python -m app.workers.parser_worker
+python -m app.workers.correlator_worker
+
+reset db
+bash scripts/dev_reset.sh
+
+update db
+D:\02_work\playground\email\app\db\migrations\versions\25e3615898c8_initial_migration.py
+
+docker exec -it tx-postgres psql -U user -d txdb
+
+get sgp timezone:
+SELECT datetime_sgt AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Singapore' AS datetime_sgt_sgt
+FROM event;
+SELECT * FROM parsed_transaction_candidate;
+select gmail_message_id, subject, from_email, internal_date from email_raw;
+
+export:
+docker exec -it tx-postgres pg_dump -U user -d txdb > db_backup.sql
+import:
+docker exec -i tx-postgres psql -U user -d txdb < db_backup.sql
+
+
+docker build -t spend_sense:1.0.3 .
+docker run -d spend_sense:1.0.3 sleep infinity 
+docker run --env-file .env -v ./credentials.json:/app/credentials.json:ro -v ./token.json:/app/token.json:ro -d spend_sense:1.0.3 sleep infinity
+
+docker exec -it $(docker run --env-file .env -v ./credentials.json:/app/credentials.json:ro -v ./token.json:/app/token.json:ro -d spend_sense:1.0.3 sleep infinity) bash
+
+docker exec -it $(docker run --env-file .env -v ./credentials.json:/app/credentials.json:ro -v ./token.json:/app/token.json:ro -e DATABASE_URL=sqlite:///./data/txdb.sqlite3 -v "$(pwd)/data:/app/data" -d spend_sense:1.0.3 sleep infinity) bash
+-e MY_VAR="my_value"
+docker exec -it amazing_goodall  bash 
+docker stop $(docker ps -q)
+docker run --rm -it -p 8000:8000 -e DATABASE_URL=sqlite:///./data/txdb.sqlite3 -v "$(pwd)/data:/app/data" spendsense:dev
+python3 -m app.workers.poller_worker
+
+token need be regenerated sometimes.

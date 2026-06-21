@@ -1,0 +1,20 @@
+iBanking Alerts
+‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌
+Dear Customer,
+We refer to your PAYNOW dated 13 Mar. We are pleased to confirm that the transaction was completed.
+Date & Time:
+13 Mar 19:49 (SGT)
+Amount:
+SGD30.00
+From:
+DBS Multiplier Account A/C ending 7013
+To:
+Le Thanh Phuong (MOBILE ending 8345)
+If unauthorised, please call our DBS hotline. To view transaction details, please login to digibank.
+Thank you for banking with us.
+Yours faithfully
+DBS Bank Ltd
+This is an auto-generated message. Please do not reply to this email.
+For enquiries, visit our DBS Help & Support Page
+or chat with us on DBS Digibot on our official DBS website.
+DBS Bank Ltd Co. Reg. No.: 196800306E April 2022

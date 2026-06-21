@@ -3,37 +3,36 @@ import re
 # ---------------------------------------------------------
 # AMOUNT PATTERNS (from SGD/VND examples)
 # ---------------------------------------------------------
-AMOUNT_REGEX = re.compile(
-    r"""
-    (?P<currency>SGD|VND)?          # Optional currency
-    \s*\$?\s*                       # Optional $
-    (?P<amount>[+-]?
-        \d{1,3}
-        (?:,\d{3})*
-        (?:\.\d{2})?
-    )
-    """,
+AMOUNT_REGEX_SGD = re.compile(
+    r"(?P<currency>SGD)(?:\$)?\s?(?P<amount>\d{1,9}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)",
     re.VERBOSE | re.IGNORECASE,
 )
+AMOUNT_REGEX_VND = re.compile(
+    r"(?P<sign>[+-])?(?P<amount>\d{1,9}(?:,\d{3})*(?:\.\d{1,2})?|\d+)(?:\s)?(?P<currency>VND)",
+    re.VERBOSE | re.IGNORECASE,
+)
+
 
 # ---------------------------------------------------------
 # DATE PATTERNS (from "02 Mar 23:08 (SGT)", "02 Mar 2026 23:08 SGT", "030326-11:54:07")
 # ---------------------------------------------------------
 DATE_PATTERNS = [
-    re.compile(r"(?P<day>\d{2})\s(?P<mon>\w{3})\s(?P<hour>\d{2}):(?P<min>\d{2})"),
-    re.compile(
-        r"(?P<day>\d{2})\s(?P<mon>\w{3})\s(?P<year>\d{4})\s(?P<hour>\d{2}):(?P<min>\d{2})"
-    ),
-    re.compile(
-        r"(?P<dd>\d{2})(?P<mm>\d{2})(?P<yy>\d{2})-(?P<hh>\d{2}):(?P<mi>\d{2}):(?P<ss>\d{2})"
-    ),
+    re.compile(r"dated (?P<day>\d{1,2})\s(?P<mon>\w{3})"),
+    re.compile(r"(?P<day>\d{1,2})\s(?P<mon>\d{1,2}|([A-Z][a-z]*))\s(?P<yyyy>\d{2,4}) "),
+        re.compile(r"(?P<dd>\d{2})\/(?P<mm>\d{2})\/(?P<yy>\d{2,4})"), # ABC bank format like 03/03/2026
+    re.compile(r"(?P<dd>\d{2})(?P<mm>\d{2})(?P<yy>\d{2})-"),
+]
+DATE_PATTERNS_DBS_2_PAYLAH = [
+    re.compile(r"(?P<day>\d{2}) (?P<mon>\w{3})\d{2}:"),
 ]
 
 # ---------------------------------------------------------
 # SENDER/RECEIVER LINES
 # ---------------------------------------------------------
-FROM_LINE = re.compile(r"From:\s*(.*)", re.IGNORECASE)
+FROM_LINE = re.compile(r"From:\s*(.*?)\s*To:", re.DOTALL)
 TO_LINE = re.compile(r"To:\s*(.*)", re.IGNORECASE)
+TRUST_SPENT = re.compile(r"You've spent\s*(.*)", re.IGNORECASE)
+TRUST_RECEIVED = re.compile(r"You've received\s*(.*)", re.IGNORECASE)
 
 # ---------------------------------------------------------
 # REFERENCE PATTERN (alphanumeric blocks 8–20 chars)
@@ -50,6 +49,7 @@ DEBIT_KEYWORDS = [
     "scan & pay",
     "latest transaction: debit",
     "transfer from",
+    "ending 014u",
 ]
 
 CREDIT_KEYWORDS = [
@@ -57,4 +57,5 @@ CREDIT_KEYWORDS = [
     "received",
     "credit +",
     "latest transaction: credit",
+    "Paynow transfer",
 ]

@@ -1,0 +1,649 @@
+
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml"
+  xmlns:o="urn:schemas-microsoft-com:office:office">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title></title>
+  <!--[if !mso]><!-->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <!--<![endif]-->
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- most search engines not to show the page in search results -->
+  <meta name="robots" content="noindex, nofollow">
+  <style type="text/css">
+    @media screen and (prefers-color-scheme: dark) {
+      .darkmode {
+        background: #000000 !important;
+        color: #FFFFFF !important;
+      }
+
+      .darkmode span {
+        color: #FFFFFF !important;
+      }
+
+      .darkmode a:link {
+        color: #fff !important;
+      }
+
+      .darkmode .text-grey {
+        color: #808F96 !important;
+      }
+
+      .darkmode .facebook-logo {
+        background-image: url("https://image-eu.moengage.com/trustbanksgbetamoengage/20230623061535576231RHMKRSfacebooklogodarkpngcomptrustbanksgbetamoengage.png");
+        background-repeat: no-repeat;
+      }
+
+      .darkmode .instagram-logo {
+        background-image: url("https://image-eu.moengage.com/trustbanksgbetamoengage/202306230615110572956LJ5GVinstagramlogodarkpngcomptrustbanksgbetamoengage.png");
+        background-repeat: no-repeat;
+      }
+
+      .darkmode .linkedin-logo {
+        background-image: url("https://image-eu.moengage.com/trustbanksgbetamoengage/202306230615512496322EADT4linkedinlogodarkpngcomptrustbanksgbetamoengage.png");
+        background-repeat: no-repeat;
+      }
+
+      .darkmode .youtube-logo {
+        background-image: url("https://image-eu.moengage.com/trustbanksgbetamoengage/20230623061604937913PG4Q7Gyoutubelogodarkpngcomptrustbanksgbetamoengage.png");
+        background-repeat: no-repeat;
+      }
+    }
+
+    .header-gif {
+      background: url("https://image-eu.moengage.com/trustbanksgbetamoengage/20230623060813076834QEUOZ6logodark130gifcomptrustbanksgbetamoengage.gif") repeat;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: auto 48px;
+      width: 100%;
+      height: 68px;
+    }
+
+    .footer-gif {
+      background-image: url("https://image-eu.moengage.com/trustbanksgbetamoengage/20230623060901444146A25B9TTrustURLLOOPINGgifcomptrustbanksgbetamoengage.gif");
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: auto 72px;
+      width: 100%;
+      height: 72px;
+    }
+
+    .social-image {
+      width: 24px;
+      height: 24px;
+    }
+
+    .facebook-logo {
+      background-image: url("https://image-eu.moengage.com/trustbanksgbetamoengage/20230623061335482826RPU75Dfacebooklogolightpngcomptrustbanksgbetamoengage.png");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+    }
+
+    .instagram-logo {
+      background-image: url("https://image-eu.moengage.com/trustbanksgbetamoengage/20230623061130383951RWM8XDinstagramlogolightpngcomptrustbanksgbetamoengage.png");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+    }
+
+    .linkedin-logo {
+      background-image: url("https://image-eu.moengage.com/trustbanksgbetamoengage/20230623061400042351KMGARDlinkedinlogolightpngcomptrustbanksgbetamoengage.png");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+    }
+
+    .youtube-logo {
+      background-image: url("https://image-eu.moengage.com/trustbanksgbetamoengage/202306230614277329364NZRSCyoutubelogolightpngcomptrustbanksgbetamoengage.png");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+    }
+
+    #outlook a {
+      padding: 0;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+
+    table,
+    td {
+      border-collapse: collapse;
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+    }
+
+    img {
+      border: 0;
+      height: auto;
+      line-height: 100%;
+      outline: none;
+      text-decoration: none;
+      -ms-interpolation-mode: bicubic;
+    }
+
+    p {
+      display: block;
+      margin: 0;
+    }
+
+    .text-lg {
+      font-size: 18px;
+      line-height: 30px;
+    }
+
+    .text-xl {
+      font-size: 24px;
+      line-height: 28px;
+    }
+
+    .text-sm {
+      font-size: 14px;
+      line-height: 18px;
+    }
+
+    .text-xs {
+      font-size: 12px;
+      line-height: 15px;
+    }
+
+    .text-xxs {
+      font-size: 10px;
+      line-height: 13px;
+    }
+
+    .footer-font {
+      font-size: 12px !important;
+    }
+  </style>
+  <!--[if mso]> <noscript><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+  <![endif]-->
+  <!--[if lte mso 11]>
+  <style type='text/css'>
+  .ogf{width:100% !important;}
+  </style>
+  <![endif]-->
+  <style type="text/css">
+    @media only screen and (min-width:649px) {
+      .pc100 {
+        width: 100% !important;
+        max-width: 100%;
+      }
+
+      .xc586 {
+        width: 586px !important;
+        max-width: 586px;
+      }
+
+      .xc650 {
+        width: 650px !important;
+        max-width: 650px;
+      }
+    }
+  </style>
+  <style media="screen and (min-width:649px)">
+    .moz-text-html .pc100 {
+      width: 100% !important;
+      max-width: 100%;
+    }
+
+    .moz-text-html .xc586 {
+      width: 586px !important;
+      max-width: 586px;
+    }
+
+    .moz-text-html .xc650 {
+      width: 650px !important;
+      max-width: 650px;
+    }
+
+    .max-w-215px {
+      max-width: 215px;
+    }
+
+    .destop-flex {
+      display: flex;
+    }
+
+    .max-w-50 {
+      max-width: 50%;
+    }
+  </style>
+  <style type="text/css">
+    @media only screen and (max-width:649px) {
+      .social-image {
+        width: 24px;
+        height: 24px;
+      }
+
+      table.fwm {
+        width: 100% !important;
+      }
+
+      td.fwm {
+        width: auto !important;
+      }
+
+      .px-0 {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
+
+      .px-10 {
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+      }
+    }
+  </style>
+  <style type="text/css">
+    u+.emailify a,
+    #MessageViewBody a,
+    a[x-apple-data-detectors] {
+      color: inherit !important;
+      text-decoration: none !important;
+      font-size: inherit !important;
+      font-family: inherit !important;
+      font-weight: inherit !important;
+      line-height: inherit !important;
+    }
+
+    u+.emailify .glist {
+      margin-left: 0 !important;
+    }
+
+    @media only screen and (max-width:649px) {
+      .emailify {
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+      }
+
+      u+.emailify .glist {
+        margin-left: 25px !important;
+      }
+
+      td.x {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
+
+      br.sb {
+        display: none !important;
+      }
+
+      .hd-1 {
+        display: block !important;
+        height: auto !important;
+        overflow: visible !important;
+      }
+
+      div.r.pr-16>table>tbody>tr>td {
+        padding-right: 16px !important
+      }
+
+      div.r.pl-16>table>tbody>tr>td {
+        padding-left: 16px !important
+      }
+
+      td.x.fs-25 span,
+      td.x.fs-25>div,
+      td.x.fs-25 {
+        font-size: 25px !important
+      }
+
+      td.x.lh-28 span,
+      td.x.lh-28>div,
+      td.x.lh-28 {
+        line-height: 28px !important
+      }
+
+      div.c.p-87 {
+        width: 87% !important;
+      }
+
+      td.x.fs-11 span,
+      td.x.fs-11>div,
+      td.x.fs-11 {
+        font-size: 11px !important
+      }
+    }
+  </style>
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <!--[if gte mso 9]>
+  <style>li{text-indent:-1em;}
+  </style>
+  <![endif]-->
+</head>
+
+<body class="emailify" style="word-spacing:normal;">
+  <div style="background-color:transparent;">
+    <!--[if mso | IE]>
+    <table align='center' border='0' cellpadding='0' cellspacing='0' class='' style='width:650px;' width='650'><tr><td bgcolor='ffffff' style='line-height:0;font-size:0;mso-line-height-rule:exactly;'>
+    <![endif]-->
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" align="center" class="xc650">
+      <tbody>
+        <tr>
+          <td bgcolor="ffffff">
+            <!--[if mso | IE]>
+<table align='center' border='0' cellpadding='0' cellspacing='0' class='' style='width:650px;' width='650'><tr><td style='line-height:0;font-size:0;mso-line-height-rule:exactly;'>
+<![endif]-->
+            <div style="margin:0px auto;max-width:650px;" class="darkmode">
+              <table align="center" border="0" cellpadding="0" cellspacing="0" style="width:100%;">
+                <tbody>
+                  <tr>
+                    <td style="direction:ltr;font-size:0;padding:0;text-align:center;">
+                      <!--[if mso | IE]>
+<table border='0' cellpadding='0' cellspacing='0'><tr><td class='' style='vertical-align:top;width:650px;'>
+<![endif]-->
+                      <div class="pc100 ogf"
+                        style="font-size:0;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                          <tbody>
+                            <tr>
+                              <td style="vertical-align:top;padding:12px 0 15px 0;">
+                                <table border="0" cellpadding="0" cellspacing="0" style="" width="100%">
+                                  <tbody>
+                                    <tr>
+                                      <td align="left" class="r pr-16 pl-16 "
+                                        style="font-size:0;padding:0;word-break:break-word;">
+                                        <table border="0" cellpadding="0" cellspacing="0"
+                                          style="border-collapse:collapse;border-spacing:0;" class="fwm">
+                                          <tbody>
+                                            <tr>
+                                              <td style="width:650px;" class="fwm">
+                                                <p
+                                                  style="font-family:Arial,sans-serif;font-size:12px;text-align:center;">
+                                                  Didn't do this? Please contact us via your Trust App.</p>
+                                              </td>
+                                            </tr>
+                                          </tbody>
+                                        </table>
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <!--[if mso | IE]>
+</td></tr></table>
+<![endif]-->
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!--[if mso | IE]>
+</td></tr></table>
+<table align='center' border='0' cellpadding='0' cellspacing='0' class='' style='width:650px;' width='650'><tr><td style='line-height:0;font-size:0;mso-line-height-rule:exactly;'>
+<![endif]-->
+            <div style="margin:0px auto;max-width:650px;">
+              <table align="center" border="0" cellpadding="0" cellspacing="0" style="width:100%;">
+                <tbody>
+                  <tr>
+                    <td style="direction:ltr;font-size:0;padding:0;text-align:center;">
+                      <!--[if mso | IE]>
+<table border='0' cellpadding='0' cellspacing='0'><tr><td class='' style='vertical-align:top;width:650px;'>
+<![endif]-->
+                      <div class="pc100 ogf"
+                        style="font-size:0;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                          <tbody>
+                            <tr>
+                              <td style="vertical-align:top;padding:0;">
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                  <tbody>
+                                    <tr>
+                                      <td align="left" class="r pt-0 pr-0 pb-0 pl-0 "
+                                        style="font-size:0;padding:0;word-break:break-word;">
+                                        <table border="0" cellpadding="0" cellspacing="0"
+                                          style="border-collapse:collapse;border-spacing:0;" class="fwm">
+                                          <tbody
+                                            style="background-color:#009DDC !important;background: linear-gradient(#009DDC, #009DDC) !important;">
+                                            <tr>
+                                              <td style="width:650px;text-align: center;" class="fwm">
+                                                <div class="header-gif"></div>
+                                              </td>
+                                            </tr>
+                                          </tbody>
+                                        </table>
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <!--[if mso | IE]>
+</td></tr></table>
+<![endif]-->
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!--[if mso | IE]>
+</td></tr></table>
+<table align='center' border='0' cellpadding='0' cellspacing='0' class='r-outlook -outlook pr-16-outlook pl-16-outlook -outlook' style='width:650px;' width='650' bgcolor='#ffffff'><tr><td style='line-height:0;font-size:0;mso-line-height-rule:exactly;'>
+<![endif]-->
+            <!--[if mso | IE]>
+</td></tr></table>
+<table align='center' border='0' cellpadding='0' cellspacing='0' class='r-outlook -outlook pr-16-outlook pl-16-outlook -outlook' style='width:650px;' width='650' bgcolor='#ffffff'><tr><td style='line-height:0;font-size:0;mso-line-height-rule:exactly;'>
+<![endif]-->
+            <div class="r pr-16 pl-16 darkmode"
+              style="background-color:transparent;margin:0px auto;border-radius:0;max-width:650px;">
+              <table align="center" border="0" cellpadding="0" cellspacing="0"
+                style="background-color:transparent;width:100%;border-radius:0;">
+                <tbody>
+                  <tr>
+                    <td style="border:none;direction:ltr;font-size:0;padding:10px 0px 20px 0px;text-align:left;">
+                      <!--[if mso | IE]>
+      <table border='0' cellpadding='0' cellspacing='0'><tr><td class='c-outlook -outlook -outlook' style='vertical-align:middle;width:650px;'>
+      <![endif]-->
+                      <div class="xc650 ogf c "
+                        style="font-size:0;text-align:left;direction:ltr;display:inline-block;vertical-align:middle;width:100%;">
+                        <!--[if mso | IE]>
+      </td></tr></table>
+      <![endif]-->
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div><div class="r pr-16 pl-16 "
+              style="background-color:transparent;margin:0px auto;border-radius:0;max-width:650px;">
+              <table align="center" border="0" cellpadding="0" cellspacing="0"
+                style="background-color:transparent;width:100%;border-radius:0;">
+                <tbody>
+                  <tr>
+                    <td style="border:none;direction:ltr;font-size:0;padding:4px 32px 5px 32px;text-align:center;"
+                      class="darkmode">
+                      <!--[if mso | IE]>
+<table border='0' cellpadding='0' cellspacing='0'><tr><td class='c-outlook -outlook p-89-outlook -outlook' style='vertical-align:middle;width:586px;'>
+<![endif]-->
+                      <div class="xc586 ogf c p-89 darkmode"
+                        style="font-size:0;text-align:left;direction:ltr;display:inline-block;vertical-align:middle;width:100%;">
+                        <table border="0" cellpadding="0" cellspacing="0"
+                          style="background-color:transparent;border:none;vertical-align:middle;" width="100%">
+                          <tbody>
+                            <!-- <tr>
+    <td style="width:650px;background:#fff;background-color:#fff;" bgcolor="ffffff" class="fwm">
+        <img alt="" height="auto" src="https://edm-image-bank.s3.ap-southeast-1.amazonaws.com/service-surprise-boy.jpg" style="border:0;display:block;outline:none;text-decoration:none;height:auto;width:100%;font-size:13px;background-color:#fff;" width="650" border="0">
+</td></tr> -->
+                            <tr>
+                              <td align="center" class="x "
+                                style="font-size:0;padding:0px 60px 0px 60px;padding-bottom:0;word-break:break-word;">
+                                <div style="font-family:Arial, Tahoma,sans-serif;text-align:center;">
+                                  <p style="Margin:0;"><span
+                                      style="mso-line-height-rule:exactly;font-size:18px;font-family:Arial, Tahoma,sans-serif;font-weight:100;line-height:25px;">You've spent SGD 3.64 at BUS/MRT                  SINGAPORE    SG on 4 Mar 2026 07:08SGT with Trust Link card. Not you? Alert us via Trust App.<br><br>
+                                    </span>
+                                    <br><br>
+
+
+                                  </p>
+                                </div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <!--[if mso | IE]>
+</td></tr></table>
+<![endif]-->
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div><div class="r pr-16 pl-16 darkmode"
+              style="background-color:transparent;margin:0px auto;border-radius:0;max-width:650px;">
+              <table align="center" border="0" cellpadding="0" cellspacing="0"
+                style="background-color:transparent;width:100%;border-radius:0;">
+                <tbody>
+                  <tr>
+                    <td style="border:none;direction:ltr;font-size:0;padding:10px 0px 20px 0px;text-align:left;">
+                      <!--[if mso | IE]>
+    <table border='0' cellpadding='0' cellspacing='0'><tr><td class='c-outlook -outlook -outlook' style='vertical-align:middle;width:650px;'>
+    <![endif]-->
+                      <div class="xc650 ogf c "
+                        style="font-size:0;text-align:left;direction:ltr;display:inline-block;vertical-align:middle;width:100%;">
+                        <table border="0" cellpadding="0" cellspacing="0"
+                          style="background-color:transparent;border:none;vertical-align:middle;" width="100%">
+                          <tbody>
+                            <tr>
+                              <td align="center" class="i "
+                                style="font-size:0;padding:0;padding-bottom:0;word-break:break-word;">
+                                <table border="0" cellpadding="0" cellspacing="0"
+                                  style="border-collapse:collapse;border-spacing:0;">
+                                  <tbody>
+                                    <tr>
+                                      <td style="width:650px;"> <img alt="" height="auto"
+                                          src="https://trustbank.sg/edm-images/divider-blue.png"
+                                          style="border:0;border-radius:0;display:block;outline:none;text-decoration:none;height:auto;width:100%;font-size:13px;"
+                                          width="650">
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <!--[if mso | IE]>
+    </td></tr></table>
+    <![endif]-->
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!--[if mso | IE]>
+    <table align='center' border='0' cellpadding='0' cellspacing='0' class='r-outlook -outlook pr-16-outlook pl-16-outlook -outlook' style='max-width:650px;'  bgcolor='#fffffe'><tr><td style='line-height:0;font-size:0;mso-line-height-rule:exactly;'>
+<![endif]-->
+            <div class="r pr-16 pl-16 darkmode"
+              style="background-color:transparent;margin:0px auto;border-radius:0;max-width:650px;">
+
+              <table align="center" border="0" cellpadding="0" cellspacing="0"
+                style="background-color:transparent;width:100%;border-radius:0;">
+                <tbody>
+                  <tr>
+                    <td style="border:none;direction:ltr;font-size:0;padding:16px 16px 16px 16px;text-align:left;">
+                      <!--[if mso | IE]>
+    <table border='0' cellpadding='0' cellspacing='0'><tr><td class='c-outlook -outlook -outlook' style='vertical-align:middle;width:618px;'>
+    <![endif]-->
+                      <div class="xc618 ogf c "
+                        style="font-size:0;text-align:left;direction:ltr;display:inline-block;vertical-align:middle;width:100%;">
+                        <table border="0" cellpadding="0" cellspacing="0"
+                          style="background-color:transparent;border:none;vertical-align:middle;" width="100%">
+                          <tbody>
+                            <tr>
+                              <td align="center" class="i m"
+                                style="font-size:0;padding:0;padding-bottom:16px;word-break:break-word;">
+                                <table border="0" cellpadding="0" cellspacing="0"
+                                  style="border-collapse:collapse;border-spacing:0;width: 100%;">
+                                  <tbody>
+                                    <tr>
+                                      <td>
+                                        <div class="footer-gif"></div>
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="center" class="x "
+                                style="font-size:0;padding:0;padding-bottom:0;word-break:break-word;" valign="top">
+                                <div style="font-family:Arial,sans-serif;line-height:0.9375rem;text-align:center;">
+                                  <p style="Margin:0;text-align:center;">
+                                    <span class="text-grey text-xs"
+                                      style="mso-line-height-rule:exactly;font-family:Arial,sans-serif;font-weight:400;">
+                                      Trust Bank Singapore Ltd | Reg No. 202039712G
+                                    </span>
+                                  </p>
+                                </div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td align="center" class="x fs-11 "
+                                style="font-size:0;padding:20px 0 0 0;word-break:break-word;">
+                                <table border="0" cellpadding="0" cellspacing="0"
+                                  style="background-color:transparent;border:none;width:100%;" width="650">
+                                  <tbody>
+                                    <tr>
+                                      <td style="width:100%;text-align: left;">
+                                        <p class="px-10" style="margin:0;padding: 0 39px;">
+                                          <span class="text-grey text-xxs"
+                                            style="mso-line-height-rule:exactly;font-family:Arial, Tahoma,sans-serif;">
+                                            Your security matters! We���ll never ask you for your username, password, or
+                                            OTP over phone, email, or SMS, because why would we when everything���s done
+                                            in-app? Also your privacy matters! Find out more in the App (Profile >
+                                            Customer Privacy Notice). Not sure about something? Feel free to reach out
+                                            to our Customer Care Team via the in-app chat.
+                                          </span>
+                                        </p>
+                                      </td>
+                                      <td width="20" style="width:2%"></td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <!--[if mso | IE]>
+    </td></tr></table>
+    <![endif]-->
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!--[if mso | IE]>
+    </td></tr></table>
+    <![endif]-->
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <br>
+</body>
+
+</html>

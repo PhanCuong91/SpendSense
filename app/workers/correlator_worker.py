@@ -7,7 +7,7 @@ logger = get_logger(__name__)
 
 
 def main():
-    interval = 10  # run correlation frequently
+    interval = 60  # run correlation frequently
     logger.info(f"Starting Correlator Worker (interval={interval}s)…")
 
     while True:

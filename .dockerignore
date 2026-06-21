@@ -1,0 +1,47 @@
+# VCS
+.git
+.gitignore
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local env and secrets
+.env
+.env.*
+credentials.json
+token.json
+gmail/credentials.json
+gmail/token.json
+
+# Local databases and backups
+*.sqlite
+*.sqlite3
+*.db
+*.sql
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Test and dev artifacts
+tests/
+.coverage
+htmlcov/
+.pyre/
+
+# OS/editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

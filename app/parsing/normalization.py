@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 from dateutil import tz
-
+from app.core.config import settings
 SGT = tz.gettz("Asia/Singapore")
 
 def normalize_whitespace(text: str) -> str:
@@ -36,36 +36,32 @@ def normalize_date(match: dict):
     }
 
     # Pattern 1: 02 Mar 23:08
-    if "day" in match and "mon" in match and "hour" in match:
+    if "day" in match and "mon" in match:
+        if settings.DEBUG:
+            print(f"normalize_date: matched pattern 1 with match dict: {match}")
         return datetime(
             year=datetime.now().year,
             month=mon_map[match["mon"]],
             day=int(match["day"]),
-            hour=int(match["hour"]),
-            minute=int(match["min"]),
             tzinfo=SGT,
         )
 
     # Pattern 2: 02 Mar 2026 23:08
-    if "year" in match:
+    if "yyyy" in match:
         return datetime(
-            year=int(match["year"]),
+            year=int(match["yyyy"]),
             month=mon_map[match["mon"]],
             day=int(match["day"]),
-            hour=int(match["hour"]),
-            minute=int(match["min"]),
             tzinfo=SGT,
         )
 
     # Pattern 3: 030326-11:54:07
     if "dd" in match:
         return datetime(
-            year=int("20" + match["yy"]),
+
+            year=int("20" + match["yy"]) if len(match["yy"]) == 2 else int(match["yy"]),
             month=int(match["mm"]),
             day=int(match["dd"]),
-            hour=int(match["hh"]),
-            minute=int(match["mi"]),
-            second=int(match["ss"]),
             tzinfo=SGT,
         )
 

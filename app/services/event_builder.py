@@ -45,6 +45,7 @@ class EventBuilder:
                 "inferred_sender": candidate.inferred_sender,
                 "inferred_receiver": candidate.inferred_receiver,
                 "debit_credit": candidate.debit_credit,
+                "type_info": candidate.type_info,
             })
 
             event_type = cls["eventType"]
@@ -62,8 +63,14 @@ class EventBuilder:
                 return None
 
             # -------------------------------------------------------
-            # Build 1-email Event
+            # Build 1-email Event (validate sender/receiver)
             # -------------------------------------------------------
+            if sender is None or receiver is None:
+                logger.error(f"EventBuilder: Cannot create Event, sender or receiver is None (candidate_id={candidate_id}, sender={sender}, receiver={receiver})")
+                self._log_error(candidate.email_id, f"Missing sender or receiver: sender={sender}, receiver={receiver}")
+                self.session.rollback()
+                return None
+
             event = Event(
                 event_type=event_type,
                 sender=sender,
@@ -81,7 +88,7 @@ class EventBuilder:
             self._audit(
                 f"Created 1-email event of type {event_type}",
                 target_id=event.id,
-                metadata={"candidate_id": str(candidate_id)},
+                extra_data={"candidate_id": str(candidate_id)},
             )
 
             logger.info(f"EventBuilder: Created 1-email Event {event.id}")
@@ -89,7 +96,7 @@ class EventBuilder:
             return event
 
         except Exception as e:
-            self._log_error(candidate_id, e)
+            self._log_error(candidate.email_id, e)
             logger.error(f"EventBuilder: Error building event: {e}")
             self.session.rollback()
             return None
@@ -100,14 +107,14 @@ class EventBuilder:
     # -------------------------------------------------------
     # Helpers
     # -------------------------------------------------------
-    def _audit(self, action, target_id=None, metadata=None):
-        audit = AuditLog(action=action, target_id=target_id, metadata=metadata)
+    def _audit(self, action, target_id=None, extra_data=None):
+        audit = AuditLog(action=action, target_id=target_id, extra_data=extra_data)
         self.session.add(audit)
         self.session.commit()
 
-    def _log_error(self, candidate_id, exception):
+    def _log_error(self, email_id, exception):
         err = ErrorLog(
-            email_id=candidate_id,
+            email_id=email_id,
             error_type="EventBuilderError",
             stack=str(exception),
         )

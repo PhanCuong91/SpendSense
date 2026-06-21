@@ -5,6 +5,7 @@ from logging.config import fileConfig
 
 from sqlalchemy import create_engine
 from sqlalchemy import pool
+from sqlalchemy.engine.url import make_url
 from alembic import context
 
 # Import Base from your application
@@ -31,6 +32,7 @@ target_metadata = Base.metadata
 
 # Use env var DATABASE_URL if provided
 database_url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+is_sqlite = make_url(database_url).get_backend_name() == "sqlite"
 
 def run_migrations_offline():
     """Run migrations in 'offline' mode (SQL scripts)."""
@@ -38,7 +40,8 @@ def run_migrations_offline():
         url=database_url,
         target_metadata=target_metadata,
         literal_binds=True,
-        dialect_opts={"paramstyle": "named"}
+        dialect_opts={"paramstyle": "named"},
+        render_as_batch=is_sqlite,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -46,10 +49,21 @@ def run_migrations_offline():
 
 def run_migrations_online():
     """Run migrations in 'online' mode (actual DB)."""
-    connectable = create_engine(database_url, poolclass=pool.NullPool)
+    connect_kwargs = {}
+    if is_sqlite:
+        connect_kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
+
+    connectable = create_engine(database_url, poolclass=pool.NullPool, **connect_kwargs)
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        if is_sqlite:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            render_as_batch=is_sqlite,
+        )
 
         with context.begin_transaction():
             context.run_migrations()

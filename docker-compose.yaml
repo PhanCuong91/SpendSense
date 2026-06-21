@@ -1,65 +1,49 @@
-version: "3.9"
+name: SpendSense
+
+x-service-defaults: &service-defaults
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      APP_VERSION: ${APP_VERSION:-dev}
+      VCS_REF: ${VCS_REF:-local}
+      BUILD_DATE: ${BUILD_DATE:-unknown}
+  image: tx-email:${APP_VERSION:-dev}
+  restart: unless-stopped
+  init: true
+  volumes:
+    - sqlite_data:/data
 
 services:
   api:
-    build: .
+    <<: *service-defaults
     container_name: tx-api
-    command: >
-      uvicorn app.main:app --host 0.0.0.0 --port 8000
     environment:
-      DATABASE_URL: postgresql+psycopg2://user:pass@db:5432/txdb
+      APP_ROLE: api
+      DATABASE_URL: sqlite:////data/txdb.sqlite3
       TZ: Asia/Singapore
     ports:
       - "8000:8000"
-    depends_on:
-      - db
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\", timeout=3)' >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   poller-worker:
-    build: .
+    <<: *service-defaults
     container_name: tx-poller
-    command: python -m app.workers.poller_worker
     environment:
-      DATABASE_URL: postgresql+psycopg2://user:pass@db:5432/txdb
-    depends_on:
-      - db
-
-  parser-worker:
-    build: .
-    container_name: tx-parser
-    command: python -m app.workers.parser_worker
-    environment:
-      DATABASE_URL: postgresql+psycopg2://user:pass@db:5432/txdb
-    depends_on:
-      - db
+      APP_ROLE: poller
+      DATABASE_URL: sqlite:////data/txdb.sqlite3
 
   correlator-worker:
-    build: .
+    <<: *service-defaults
     container_name: tx-correlator
-    command: python -m app.workers.correlator_worker
     environment:
-      DATABASE_URL: postgresql+psycopg2://user:pass@db:5432/txdb
-    depends_on:
-      - db
-
-  db:
-    image: postgres:15
-    container_name: tx-postgres
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-      POSTGRES_DB: txdb
-    ports:
-      - "5433:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  adminer:
-    image: adminer
-    container_name: tx-adminer
-    ports:
-      - "8080:8080"
-    depends_on:
-      - db
+      APP_ROLE: correlator
+      DATABASE_URL: sqlite:////data/txdb.sqlite3
 
 volumes:
-  pgdata:
+  sqlite_data:
