@@ -40,14 +40,16 @@ jobs:
         with:
           script: |
             try {
+              // Extract the PR number safely from the payload context
+              const prNumber = context.payload.pull_request.number;
+              
               await github.rest.issues.removeLabel({
-                issue_number: context.issue.number,
+                issue_number: prNumber,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 name: 'check'
               });
-              console.log("Successfully removed 'check' label from PR.");
+              console.log(`Successfully removed 'check' label from PR #${prNumber}.`);
             } catch (error) {
-              // If the label was already removed manually during execution, don't crash the pipeline
-              console.log("Label 'check' might have already been removed: " + error.message);
+              console.log("Could not remove label: " + error.message);
             }
