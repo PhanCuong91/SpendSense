@@ -4,6 +4,8 @@ import hashlib
 import sys
 from pathlib import Path
 
+
+
 class DeepFolderSyncer:
     def __init__(self, source_dir: str, dest_dir: str, chunk_size: int = 131072):
         """
