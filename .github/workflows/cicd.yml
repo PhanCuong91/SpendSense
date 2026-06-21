@@ -2,7 +2,7 @@ name: Comprehensive PR Pipeline
 
 on:
   pull_request:
-    types: [ labeled ]
+    types: [labeled]
     # branches: [master]
   workflow_dispatch: 
 
