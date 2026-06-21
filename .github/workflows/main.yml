@@ -9,7 +9,7 @@ on:
 jobs:
   # 1. This job runs when the PR is labeled with "check"
   check-label:
-    #if: github.event.action == 'opened' && github.event.label.name == 'check'
+    if: github.event.label.name == 'check'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
