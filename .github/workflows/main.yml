@@ -2,8 +2,8 @@ name: Comprehensive PR Pipeline
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, closed, labeled]
-    branches: [master]
+    types: [ labeled ]
+    # branches: [master]
   workflow_dispatch: 
 
 jobs:
