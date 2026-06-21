@@ -1,7 +1,9 @@
 import traceback
 from datetime import datetime, timezone
 from app.gmail.client import GmailClient
-from app.db.session import SessionLocal
+from app.db.base import Base
+from app.db.session import SessionLocal, engine
+from sqlalchemy import inspect
 # Import models to ensure they're all registered
 from app.db.models import EmailRaw
 from app.workers.parser_worker import enqueue_for_parsing
@@ -33,6 +35,15 @@ class GmailPoller:
     def poll_once(self):
         logger.info("Starting Gmail poll cycle…")
         
+        # Ensure the `email_raw` table exists; create it if missing.
+        try:
+            inspector = inspect(engine)
+            if not inspector.has_table(EmailRaw.__tablename__):
+                Base.metadata.create_all(bind=engine, tables=[EmailRaw.__table__], checkfirst=True)
+                logger.info(f"Created missing table {EmailRaw.__tablename__}")
+        except Exception as e:
+            logger.error(f"Error ensuring table {EmailRaw.__tablename__} exists: {e}")
+
         session = SessionLocal()
         try:
             page_token = None

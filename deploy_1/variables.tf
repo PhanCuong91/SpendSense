@@ -19,7 +19,7 @@ variable "ecr_repo_name" {
 variable "app_image_tag" {
   description = "Image tag to run from ECR."
   type        = string
-  default     = "1.0.6"
+  default     = "1.0.7"
 }
 
 variable "app_container_name" {
@@ -99,4 +99,10 @@ variable "private_subnet_ids" {
   type        = list(string)
   description = "Private subnets for EFS mount targets"
   default = [ "subnet-055480c6716bfb03a" ]
+}
+
+variable "public_subnet_ids" {
+  type        = list(string)
+  description = "Public subnets for ECS tasks that require a public IP for outbound internet access. If empty, falls back to private_subnet_ids."
+  default     = []
 }

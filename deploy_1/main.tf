@@ -24,6 +24,8 @@ locals {
     Project = var.project_name
     Managed = "terraform"
   }
+
+  ecs_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
 }
 
 resource "aws_ecr_repository" "app" {
@@ -277,7 +279,8 @@ resource "aws_ecs_service" "app_service" {
   platform_version = "1.4.0"
 
   network_configuration {
-    subnets         = var.private_subnet_ids
+    # Use explicit public subnet IDs if provided, otherwise fall back to configured subnets.
+    subnets         = local.ecs_subnet_ids
     security_groups = [aws_security_group.ecs_sg.id]
     assign_public_ip = true
   }
@@ -335,64 +338,13 @@ resource "aws_security_group_rule" "ecs_allow_tls_self" {
 }
 
 # Interface endpoint for Secrets Manager
-resource "aws_vpc_endpoint" "secretsmanager" {
-  vpc_id            = var.vpc_id
-  service_name      = "com.amazonaws.${var.aws_region}.secretsmanager"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = var.private_subnet_ids
-  security_group_ids = [aws_security_group.ecs_sg.id]
-  private_dns_enabled = true
-  tags = local.common_tags
-}
-# Interface endpoint for ECR API authorization
-resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id            = var.vpc_id
-  service_name      = "com.amazonaws.${var.aws_region}.ecr.api"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = var.private_subnet_ids
-  security_group_ids = [aws_security_group.ecs_sg.id]
-  private_dns_enabled = true
-  tags = local.common_tags
-}
+# The ECS service uses public IP addresses so it can reach ECR, Secrets Manager, and other AWS public services over the internet.
+# VPC endpoints are removed to avoid the extra interface endpoint costs.
 
-# Interface endpoint for ECR image downloads
-resource "aws_vpc_endpoint" "ecr_dkr" {
-  vpc_id            = var.vpc_id
-  service_name      = "com.amazonaws.${var.aws_region}.ecr.dkr"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = var.private_subnet_ids
-  security_group_ids = [aws_security_group.ecs_sg.id]
-  private_dns_enabled = true
-  tags = local.common_tags
-}
-
-# Interface endpoint for STS needed by ECR auth and ECS credentials
-resource "aws_vpc_endpoint" "sts" {
-  vpc_id            = var.vpc_id
-  service_name      = "com.amazonaws.${var.aws_region}.sts"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = var.private_subnet_ids
-  security_group_ids = [aws_security_group.ecs_sg.id]
-  private_dns_enabled = true
-  tags = local.common_tags
-}
-# Interface endpoint for KMS (needed if secret is KMS-encrypted)
-resource "aws_vpc_endpoint" "kms" {
-  vpc_id            = var.vpc_id
-  service_name      = "com.amazonaws.${var.aws_region}.kms"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = var.private_subnet_ids
-  security_group_ids = [aws_security_group.ecs_sg.id]
-  private_dns_enabled = true
-  tags = local.common_tags
-}
-
-resource "aws_vpc_endpoint" "logs" {
-  vpc_id            = var.vpc_id
-  service_name      = "com.amazonaws.${var.aws_region}.logs"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = var.private_subnet_ids
-  security_group_ids = [aws_security_group.ecs_sg.id]
-  private_dns_enabled = true
-  tags = local.common_tags
-}
+# Example: Fetching an existing AWS VPC by its tags
+# data "aws_vpc" "existing_vpc" {
+#   filter {
+#     name   = "tag:Name"
+#     values = ["production-vpc"]
+#   }
+# }
