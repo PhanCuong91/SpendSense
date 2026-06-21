@@ -77,51 +77,91 @@ class DeepFolderSyncer:
                 print(f"Permission denied: {current_dir}")
 
         _recurse(base_dir)
-        return relative_paths
+        sorted_paths = self.sort_relative_paths(relative_paths)
+        # print(sorted_paths)
+        return sorted_paths
+
+    def sort_relative_paths(self, relative_paths: set) -> list:
+        """Returns the relative paths sorted alphabetically."""
+        return sorted(relative_paths)
+
+    def compare_relative_paths(self, source_paths, dest_paths):
+        """Compares two sorted relative path lists and returns differences."""
+        source_set = set(source_paths)
+        dest_set = set(dest_paths)
+
+        return {
+            "only_in_source": sorted(source_set - dest_set),
+            "only_in_dest": sorted(dest_set - source_set),
+            "common": sorted(source_set & dest_set),
+        }
 
     def sync(self, dry_run: bool = False, delete_extra: bool = True):
         print(f"Scanning source structure (Deep Tree Optimized)...")
         source_files = self._scan_directory(self.source)
+        dest_files = self._scan_directory(self.dest)
+        only_source, only_dest, common = self.compare_relative_paths(source_files, dest_files).values()
+        print(f"Found {len(source_files)} files in source, {len(dest_files)} files in destination.")
+        print(f"Files only in source: {only_source}")
+
+        try:
+            with open('only_src.txt', 'w', encoding='utf-8') as f:
+                for rel_path in only_source:
+                    f.write(rel_path + '\n')
+            print("Saved only_source list to only_src.txt")
+        except OSError as e:
+            print(f"Failed to save only_src.txt: {e}")
+
+        try:
+            with open('only_dest.txt', 'w', encoding='utf-8') as f:
+                for rel_path in only_dest:
+                    f.write(rel_path + '\n')
+            print("Saved only_destination list to only_dest.txt")
+        except OSError as e:
+            print(f"Failed to save only_dest.txt: {e}")
+
+        print(f"Files only in destination: {only_dest}")
+        print(f"Common files: {len(common)}")
         print(f"Found {len(source_files)} files in source.")
 
-        # Phase 1: Copy new/modified files
-        for rel_path in source_files:
-            src_file = os.path.join(self.source, rel_path)
-            dest_file = os.path.join(self.dest, rel_path)
+        # # Phase 1: Copy new/modified files
+        # for rel_path in source_files:
+        #     src_file = os.path.join(self.source, rel_path)
+        #     dest_file = os.path.join(self.dest, rel_path)
 
-            if self.should_update(src_file, dest_file):
-                if dry_run:
-                    print(f"[DRY RUN] Would update: {rel_path}")
-                else:
-                    print(f"Copying: {rel_path}")
-                    os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-                    try:
-                        shutil.copy2(src_file, dest_file)
-                    except OSError as e:
-                        print(f"Failed to copy {rel_path}: {e}")
+        #     if self.should_update(src_file, dest_file):
+        #         if dry_run:
+        #             print(f"[DRY RUN] Would update: {rel_path}")
+        #         else:
+        #             print(f"Copying: {rel_path}")
+        #             os.makedirs(os.path.dirname(dest_file), exist_ok=True)
+        #             try:
+        #                 shutil.copy2(src_file, dest_file)
+        #             except OSError as e:
+        #                 print(f"Failed to copy {rel_path}: {e}")
 
-        # Phase 2: Handle deletions in destination
-        if delete_extra and os.path.exists(self.dest):
-            print(f"\nScanning destination for deletions...")
-            dest_files = self._scan_directory(self.dest)
+        # # Phase 2: Handle deletions in destination
+        # if delete_extra and os.path.exists(self.dest):
+        #     print(f"\nScanning destination for deletions...")
+        #     dest_files = self._scan_directory(self.dest)
             
-            # Find files that exist in Dest but no longer in Source
-            extra_files = dest_files - source_files
+        #     # Find files that exist in Dest but no longer in Source
+        #     extra_files = dest_files - source_files
             
-            for rel_path in extra_files:
-                dest_file = os.path.join(self.dest, rel_path)
-                if dry_run:
-                    print(f"[DRY RUN] Would delete: {rel_path}")
-                else:
-                    print(f"Deleting file: {rel_path}")
-                    try:
-                        os.remove(dest_file)
-                    except OSError as e:
-                        print(f"Could not delete {rel_path}: {e}")
+        #     for rel_path in extra_files:
+        #         dest_file = os.path.join(self.dest, rel_path)
+        #         if dry_run:
+        #             print(f"[DRY RUN] Would delete: {rel_path}")
+        #         else:
+        #             print(f"Deleting file: {rel_path}")
+        #             try:
+        #                 os.remove(dest_file)
+        #             except OSError as e:
+        #                 print(f"Could not delete {rel_path}: {e}")
 
-            # Clean up empty directories bottom-up
-            if not dry_run:
-                self._clean_empty_dirs(self.dest)
+        #     # Clean up empty directories bottom-up
+        #     if not dry_run:
+        #         self._clean_empty_dirs(self.dest)
 
         print("\nSynchronization task complete!")
 
