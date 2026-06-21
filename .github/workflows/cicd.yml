@@ -10,6 +10,8 @@ jobs:
   check-label:
     if: github.event.label.name == 'check'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -35,21 +37,7 @@ jobs:
       # --- Step 2: Automatically Remove the Label ---
       - name: Remove 'check' Label
         # Run this even if the previous testing steps fail so the label isn't stuck
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions-ecosystem/action-remove-labels@v1
         with:
-          script: |
-            try {
-              // Extract the PR number safely from the payload context
-              const prNumber = context.payload.pull_request.number;
-              
-              await github.rest.issues.removeLabel({
-                issue_number: prNumber,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: 'check'
-              });
-              console.log(`Successfully removed 'check' label from PR #${prNumber}.`);
-            } catch (error) {
-              console.log("Could not remove label: " + error.message);
-            }
+          github_token: ${{ secrets.TOKEN }}
+          labels: "check"
