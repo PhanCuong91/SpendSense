@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     # Pipeline Configuration
     POLL_INTERVAL_SECONDS: int = 300
+    POLL_ONCE: bool = False
     CORRELATION_WINDOW_MINUTES: int = 15
 
     # Logging
