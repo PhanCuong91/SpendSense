@@ -9,33 +9,33 @@ on:
 jobs:
   check-label:
     if: github.event.label.name == 'check'
-    secrets:
-      GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
-      GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
-      TOKEN: ${{ secrets.TOKEN }}
+    
     steps:
       - name: Run Python Test and Remove Label
         uses: ./.github/workflows/python-test.yml
         with:
           command: |
              python3 -m app.workers.poller_worker
+        secrets:
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          TOKEN: ${{ secrets.TOKEN }}
       - name: Remove Label
         uses: ./.github/workflows/remove-label.yml
 
   # 2. This job runs when the PR is labeled with "merge"
   merge-label:
     if: github.event.label.name == 'merge'
-    
-    secrets:
-      GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
-      GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
-      TOKEN: ${{ secrets.TOKEN }}
     steps:
       - name: Run Python Test and Remove Label
         uses: ./.github/workflows/python-test.yml
         with:
           command: |
              python3 -m app.workers.poller_worker
+        secrets:
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          TOKEN: ${{ secrets.TOKEN }}
       - name: Remove Label
         uses: ./.github/workflows/remove-label.yml
       
