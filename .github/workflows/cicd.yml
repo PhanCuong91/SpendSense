@@ -14,11 +14,6 @@ jobs:
     with:
       command: |
          python3 -m app.workers.poller_worker
-    secrets:
-      GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
-      GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
-      PYTHONPATH: src
-      POLL_ONCE: "true"
 
   # 2. This job runs when the PR is labeled with "merge"
   merge-label:
@@ -28,11 +23,6 @@ jobs:
     with:
       command: |
          python3 -m app.workers.poller_worker
-    secrets:
-      GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
-      GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
-      PYTHONPATH: src
-      POLL_ONCE: "true"
   
   cleanup:
     if: always()
