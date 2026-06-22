@@ -11,7 +11,7 @@ jobs:
     if: github.event.label.name == 'check'
     runs-on: ubuntu-latest
     steps:
-      - uses: ./.github/workflows/python-test.yml
+      - uses: ./.github/workflows/python-setup.yml
 
       - name: Run Tests
         env:
@@ -27,7 +27,7 @@ jobs:
     if: github.event.label.name == 'merge'
     runs-on: ubuntu-latest
     steps:
-      - uses: ./.github/workflows/python-test.yml
+      - uses: ./.github/workflows/python-setup.yml
 
       - name: Run Tests
         env:
