@@ -36,7 +36,7 @@ jobs:
 
     # 2. This job runs when the PR is labeled with "merge"
   merge-label:
-    if: github.event.action == 'labeled' && github.event.label.name == 'merge'
+    if: github.event.label.name == 'merge'
     runs-on: ubuntu-latest
     steps:
       - name: Run Merge Label Deployment
