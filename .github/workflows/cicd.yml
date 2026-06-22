@@ -10,8 +10,6 @@ jobs:
   check-label:
     if: github.event.label.name == 'check'
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -35,9 +33,18 @@ jobs:
         run: |
           python3 -m app.workers.poller_worker
       # --- Step 2: Automatically Remove the Label ---
-      - name: Remove 'check' Label
-        # Run this even if the previous testing steps fail so the label isn't stuck
-        uses: actions-ecosystem/action-remove-labels@v1
-        with:
-          github_token: ${{ secrets.TOKEN }}
-          labels: "check"
+
+    # 2. This job runs when the PR is labeled with "merge"
+  merge-label:
+    if: github.event.action == 'labeled' && github.event.label.name == 'merge'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Merge Label Deployment
+        run: echo "Preparing deployment for merge label..."
+  cleanup:
+    if: always()
+    needs: [test]
+    uses: ./.github/workflows/remove-label.yml
+    secrets:
+      TOKEN: ${{ secrets.TOKEN }}
+
