@@ -11,7 +11,7 @@ jobs:
     if: github.event.label.name == 'check'
     runs-on: ubuntu-latest
     steps:
-      - uses: ./.github/prepare/python-setup
+      - uses: ./.github/actions/python-setup
 
       - name: Run Tests
         env:
