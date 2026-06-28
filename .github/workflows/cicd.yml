@@ -76,6 +76,10 @@ jobs:
     name: Deploy to AWS
     needs: check-label
     runs-on: ubuntu-latest
+    # Add these exact permissions lines:
+    permissions:
+      id-token: write   # Mandatory for OIDC authentication with AWS
+      contents: read    # Mandatory for actions/checkout to read your code
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
