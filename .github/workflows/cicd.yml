@@ -7,6 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ==========================================
+  # PROCESS 1: RUN CHECK TESTS
+  # ==========================================
   check-label:
     if: github.event.label.name == 'check'
     uses: ./.github/workflows/python-test.yml
@@ -18,7 +21,11 @@ jobs:
     secrets:
       GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
       GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
-  # 2. This job runs when the PR is labeled with "merge"
+
+  # ==========================================
+  # PROCESS 2: RUN MERGE TESTS & AUTO-MERGE
+  # ==========================================
+
   merge-label:
     if: github.event.label.name == 'merge'
     runs-on: ubuntu-latest
@@ -61,6 +68,56 @@ jobs:
               pull_number: context.issue.number,
               merge_method: 'merge'
             })
+
+  # ==========================================
+  # PROCESS 3: CD DEPLOYMENT
+  # ==========================================
+  continuous-deployment:
+    name: Deploy to AWS
+    needs: merge-label
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.merge-label.outputs.merged_sha }}
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::359615771071:role/GitHubActionsWorkflowRole
+        aws-region: ap-southeast-1
+
+    - name: Log in to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build, Tag, and Push Image to Amazon ECR
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: 1.0.8
+        ECR_REPOSITORY: spend_sense
+      run: |
+        docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+        # docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        # echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    # - name: Fill New Image ID in ECS Task Definition
+    #   id: task-def
+    #   uses: aws-actions/amazon-ecs-render-task-definition@v1
+    #   with:
+    #     task-definition: ${{ env:ECS_TASK_DEFINITION }}
+    #     container-name: ${{ env:CONTAINER_NAME }}
+    #     image: ${{ steps.build-image.outputs.image }}
+
+    # - name: Deploy Amazon ECS Task Definition
+    #   uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+    #   with:
+    #     task-definition: ${{ steps.task-def.outputs.task-definition }}
+    #     service: ${{ env:ECS_SERVICE }}
+    #     cluster: ${{ env:ECS_CLUSTER }}
+    #     wait-for-service-stability: true
 
   cleanup:
     if: always()
