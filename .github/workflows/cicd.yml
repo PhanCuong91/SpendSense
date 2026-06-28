@@ -74,13 +74,13 @@ jobs:
   # ==========================================
   continuous-deployment:
     name: Deploy to AWS
-    needs: merge-label
+    needs: check-label
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-      with:
-        ref: ${{ needs.merge-label.outputs.merged_sha }}
+      # with:
+      #   ref: ${{ needs.check-label.outputs.merged_sha }}
 
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
