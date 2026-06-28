@@ -8,7 +8,7 @@ on:
 
 jobs:
   check-label:
-   if: github.event.label.name == 'check'
+  if: github.event.label.name == 'check'
   uses: ./.github/workflows/remove-label.yml
   uses: ./.github/workflows/python-test.yml
   with:
