@@ -76,6 +76,17 @@ jobs:
     name: Deploy to AWS
     needs: check-label
     runs-on: ubuntu-latest
+    env:
+      # COMMIT_SHA: ${{ needs.merge-label.outputs.merged_sha }}
+      COMMIT_SHA: 1234
+      AWS_REGION: ap-southeast-1
+      IMAGE_TAG: ${{ env.COMMIT_SHA }}
+      SECRET_CREDENTIAL_NAME: spendsense_gmail_credentials_json
+      SECRET_TOKEN_NAME: spendsense_gmail_token_json
+      AWS_SECRET_NAME: aws_secretsmanager_secret
+      AWS_SECRET_RESOURCE_CREDENTIAL: gmail_credentials
+      AWS_SECRET_RESOURCE_TOKEN: gmail_token
+
     # Add these exact permissions lines:
     permissions:
       id-token: write   # Mandatory for OIDC authentication with AWS
@@ -83,29 +94,41 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-      # with:
-      #   ref: ${{ needs.check-label.outputs.merged_sha }}
-
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: arn:aws:iam::359615771071:role/GitHubActionsWorkflowRole
-        aws-region: ap-southeast-1
-
-    - name: Log in to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
+        ref: ${{ env.COMMIT_SHA }}
 
     - name: Build, Tag, and Push Image to Amazon ECR
       id: build-image
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: 1.0.8
-        ECR_REPOSITORY: spend_sense
       run: |
-        docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+        docker build -t spend_sense:${{ env.IMAGE_TAG }} .
         # docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         # echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+  
+    - name: Deploy to AWS
+      id: deploy-aws
+      run: |
+        echo "Login to AWS with AWS CLI"
+
+        aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws configure set region $AWS_REGION
+        aws configure set output json
+
+        echo "Import Secrets if it exists in AWS Secrets Manager"
+
+        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null) \
+        && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_CREDENTIAL_NAME }}  --region ${{ env.AWS_REGION }} \
+        && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_CREDENTIAL }} "$ARN"
+
+        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_TOKEN_NAME }}" --query 'ARN' --output text 2>/dev/null) \
+        && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_TOKEN_NAME }}  --region ${{ env.AWS_REGION }} \
+        && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_TOKEN }} "$ARN" 
+
+        echo "Deploying to AWS"
+
+        terraform init
+        terraform apply -auto-approve -var="app_image_tag=${{ env.IMAGE_TAG }}"
+        
 
     # - name: Fill New Image ID in ECS Task Definition
     #   id: task-def
