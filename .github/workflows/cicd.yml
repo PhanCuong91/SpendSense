@@ -95,12 +95,12 @@ jobs:
     steps:
     - name: Name for AWS resouce access
       run: |
-        echo "IMAGE_TAG=${{ env.COMMIT_SHA }}" >> $GITHUB_ENV
+        echo "IMAGE_TAG=1234" >> $GITHUB_ENV
 
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        ref: ${{ env.COMMIT_SHA }}
+        ref: ${{ github.event.pull_request.head.sha }}
 
     - name: Build, Tag, and Push Image to Amazon ECR
       id: build-image
