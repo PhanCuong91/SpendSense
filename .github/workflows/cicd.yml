@@ -94,7 +94,7 @@ jobs:
       contents: read    # Mandatory for actions/checkout to read your code
     steps:
     - name: Name for AWS resouce access
-      runs: |
+      run: |
         echo "IMAGE_TAG=${{ env.COMMIT_SHA }}" >> $GITHUB_ENV
 
     - name: Checkout Code
