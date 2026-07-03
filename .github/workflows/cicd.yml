@@ -80,7 +80,8 @@ jobs:
       # COMMIT_SHA: ${{ needs.merge-label.outputs.merged_sha }}
       COMMIT_SHA: 1234
       AWS_REGION: ap-southeast-1
-      IMAGE_TAG: ${{ env.COMMIT_SHA }}
+      PROJECT_NAME: spend_sense
+      ECR_REGISTRY: 359615771071.dkr.ecr
       SECRET_CREDENTIAL_NAME: spendsense_gmail_credentials_json
       SECRET_TOKEN_NAME: spendsense_gmail_token_json
       AWS_SECRET_NAME: aws_secretsmanager_secret
@@ -92,6 +93,10 @@ jobs:
       id-token: write   # Mandatory for OIDC authentication with AWS
       contents: read    # Mandatory for actions/checkout to read your code
     steps:
+    - name: Name for AWS resouce access
+      runs: |
+        echo "IMAGE_TAG=${{ env.COMMIT_SHA }}" >> $GITHUB_ENV
+
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
@@ -101,33 +106,36 @@ jobs:
       id: build-image
       run: |
         docker build -t spend_sense:${{ env.IMAGE_TAG }} .
-        # docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        # echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        docker tag spend_sense:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com//${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}
+        docker push ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com//${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}
+        echo "image=${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com//${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT
+        # docker push 359615771071.dkr.ecr.ap-southeast-1.amazonaws.com/spend_sense:1.0.3
+        # docker tag spend_sense:1.0.3 359615771071.dkr.ecr.ap-southeast-1.amazonaws.com/spend_sense:1.0.3
   
-    - name: Deploy to AWS
-      id: deploy-aws
-      run: |
-        echo "Login to AWS with AWS CLI"
+    # - name: Deploy to AWS
+    #   id: deploy-aws
+    #   run: |
+    #     echo "Login to AWS with AWS CLI"
 
-        aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws configure set region $AWS_REGION
-        aws configure set output json
+    #     aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+    #     aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    #     aws configure set region $AWS_REGION
+    #     aws configure set output json
 
-        echo "Import Secrets if it exists in AWS Secrets Manager"
+    #     echo "Import Secrets if it exists in AWS Secrets Manager"
 
-        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null) \
-        && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_CREDENTIAL_NAME }}  --region ${{ env.AWS_REGION }} \
-        && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_CREDENTIAL }} "$ARN"
+    #     ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null) \
+    #     && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_CREDENTIAL_NAME }}  --region ${{ env.AWS_REGION }} \
+    #     && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_CREDENTIAL }} "$ARN"
 
-        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_TOKEN_NAME }}" --query 'ARN' --output text 2>/dev/null) \
-        && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_TOKEN_NAME }}  --region ${{ env.AWS_REGION }} \
-        && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_TOKEN }} "$ARN" 
+    #     ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_TOKEN_NAME }}" --query 'ARN' --output text 2>/dev/null) \
+    #     && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_TOKEN_NAME }}  --region ${{ env.AWS_REGION }} \
+    #     && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_TOKEN }} "$ARN" 
 
-        echo "Deploying to AWS"
+    #     echo "Deploying to AWS"
 
-        terraform init
-        terraform apply -auto-approve -var="app_image_tag=${{ env.IMAGE_TAG }}"
+    #     terraform init
+    #     terraform apply -auto-approve -var="app_image_tag=${{ env.IMAGE_TAG }}"
         
 
     # - name: Fill New Image ID in ECS Task Definition
