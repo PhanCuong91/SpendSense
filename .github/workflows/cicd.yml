@@ -145,6 +145,8 @@ jobs:
 
         echo "Deploying to AWS"
 
+        cd deploy_1
+
         terraform init
         terraform apply -auto-approve -var="app_image_tag=${{ env.IMAGE_TAG }}"
         
