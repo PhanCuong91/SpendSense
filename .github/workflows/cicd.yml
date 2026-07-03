@@ -139,10 +139,10 @@ jobs:
         ls -la
         cd deploy_1
 
-        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null) \
-        && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_CREDENTIAL_NAME }}  --region ${{ env.AWS_REGION }} \
-        && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_CREDENTIAL }} "$ARN"
-
+        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null)
+        aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_CREDENTIAL_NAME }}  --region ${{ env.AWS_REGION }}
+        terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_CREDENTIAL }} "$ARN"
+        echo "Import Secrets if it exists in AWS Secrets Manager"
         ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_TOKEN_NAME }}" --query 'ARN' --output text 2>/dev/null) \
         && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_TOKEN_NAME }}  --region ${{ env.AWS_REGION }} \
         && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_TOKEN }} "$ARN" 
