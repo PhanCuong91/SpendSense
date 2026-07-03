@@ -131,6 +131,9 @@ jobs:
     #     echo "image=${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT 
     - name: Deploy to AWS
       id: deploy-aws
+      env:
+        TF_VAR_gmail_credentials_json: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+        TF_VAR_gmail_token_json: ${{ secrets.GMAIL_TOKEN_JSON }}
       run: |
 
         echo "Import Secrets if it exists in AWS Secrets Manager"

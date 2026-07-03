@@ -88,6 +88,21 @@ variable "gmail_token_file" {
   type        = string
   default     = "../token.json"
 }
+
+variable "gmail_credentials_json" {
+  type        = string
+  default     = null
+  description = "Gmail credentials JSON content (from GitHub Actions secret). If not provided, reads from local file."
+  sensitive   = true
+}
+
+variable "gmail_token_json" {
+  type        = string
+  default     = null
+  description = "Gmail token JSON content (from GitHub Actions secret). If not provided, reads from local file."
+  sensitive   = true
+}
+
 variable "vpc_id" {
   type        = string
   description = "VPC where EC2/EFS will be deployed"

@@ -46,7 +46,7 @@ resource "aws_secretsmanager_secret" "gmail_credentials" {
 
 resource "aws_secretsmanager_secret_version" "gmail_credentials_version" {
   secret_id     = aws_secretsmanager_secret.gmail_credentials.id
-  secret_string = file(var.gmail_credentials_file)
+  secret_string = var.gmail_credentials_json != null ? var.gmail_credentials_json : file(var.gmail_credentials_file)
 }
 
 resource "aws_secretsmanager_secret" "gmail_token" {
@@ -56,7 +56,7 @@ resource "aws_secretsmanager_secret" "gmail_token" {
 
 resource "aws_secretsmanager_secret_version" "gmail_token_version" {
   secret_id     = aws_secretsmanager_secret.gmail_token.id
-  secret_string = file(var.gmail_token_file)
+  secret_string = var.gmail_token_json != null ? var.gmail_token_json : file(var.gmail_token_file)
 }
 
 resource "aws_efs_file_system" "app_fs" {
