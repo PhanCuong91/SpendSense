@@ -134,6 +134,7 @@ jobs:
       run: |
 
         echo "Import Secrets if it exists in AWS Secrets Manager"
+        cd deploy_1
 
         ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null) \
         && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_CREDENTIAL_NAME }}  --region ${{ env.AWS_REGION }} \
@@ -144,9 +145,6 @@ jobs:
         && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_TOKEN }} "$ARN" 
 
         echo "Deploying to AWS"
-
-        cd deploy_1
-
         terraform init
         terraform apply -auto-approve -var="app_image_tag=${{ env.IMAGE_TAG }}"
         
