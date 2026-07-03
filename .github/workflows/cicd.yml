@@ -106,7 +106,9 @@ jobs:
       id: build-image
       run: |
         docker build -t spend_sense:${{ env.IMAGE_TAG }} .
+        echo "Logging in to Amazon ECR..."
         aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com
+        echo "Tagging and pushing the Docker image..."
         docker tag spend_sense:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}
         docker push ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}
         echo "image=${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT 
