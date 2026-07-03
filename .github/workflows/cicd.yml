@@ -102,6 +102,11 @@ jobs:
       with:
         ref: ${{ github.event.pull_request.head.sha }}
 
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.9.0" # Specify your required version here
+
     - name: Build docker image
       id: build-image
       run: |
