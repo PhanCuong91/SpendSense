@@ -134,6 +134,9 @@ jobs:
       run: |
 
         echo "Import Secrets if it exists in AWS Secrets Manager"
+        echo "Working directory: $(pwd)"
+        echo "Contents of working directory:" 
+        ls -la
         cd deploy_1
 
         ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null) \
