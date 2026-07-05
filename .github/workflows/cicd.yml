@@ -140,7 +140,14 @@ jobs:
         echo "Working directory: $(pwd)"
 
         cd deploy_1
+        echo "Current directory: $(pwd)"
+        echo "Terraform version: $(terraform version)"
+        
         terraform init
+        echo "Terraform initialized successfully."
+        terraform destroy -auto-approve
+        echo "Terraform destroyed successfully."
+
         ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null)
         aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_CREDENTIAL_NAME }}  --region ${{ env.AWS_REGION }}
         terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_CREDENTIAL }} "$ARN"
