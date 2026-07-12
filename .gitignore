@@ -2,3 +2,5 @@
 
 /decoded_*.json
 /full_msg_*.json
+credentials.json
+token.json

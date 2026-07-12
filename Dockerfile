@@ -19,7 +19,8 @@ SHELL ["/bin/sh", "-euxo", "pipefail", "-c"]
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt 
+RUN pip install --no-cache-dir awscli==1.30.0 
 
 COPY app ./app
 

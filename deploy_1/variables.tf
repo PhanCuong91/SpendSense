@@ -19,7 +19,7 @@ variable "ecr_repo_name" {
 variable "app_image_tag" {
   description = "Image tag to run from ECR."
   type        = string
-  default     = "1.0.7"
+  default     = "1.0.9"
 }
 
 variable "app_container_name" {
