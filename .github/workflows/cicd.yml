@@ -136,6 +136,7 @@ jobs:
     - name: Build docker image
       id: build-image
       run: |
+        aws ecr get-login-password --region ap-southeast-1 | docker login --username AWS --password-stdin 359615771071.dkr.ecr.ap-southeast-1.amazonaws.com
         docker build -t spend_sense:${{ env.IMAGE_TAG }} .
         docker tag spend_sense:${{ env.IMAGE_TAG }} 359615771071.dkr.ecr.ap-southeast-1.amazonaws.com/spend_sense:${{ env.IMAGE_TAG }}
         docker push 359615771071.dkr.ecr.ap-southeast-1.amazonaws.com/spend_sense:${{ env.IMAGE_TAG }}
