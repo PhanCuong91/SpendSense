@@ -87,6 +87,8 @@ jobs:
       AWS_SECRET_NAME: aws_secretsmanager_secret
       AWS_SECRET_RESOURCE_CREDENTIAL: gmail_credentials
       AWS_SECRET_RESOURCE_TOKEN: gmail_token
+      TF_STATE_BUCKET: spendsense-tfstate-359615771071
+      TF_STATE_KEY: spendsense/terraform.tfstate
 
     # Add these exact permissions lines:
     permissions:
@@ -101,6 +103,30 @@ jobs:
       uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Validate deployment environment
+      run: |
+        set -euo pipefail
+        : "${AWS_REGION:?AWS_REGION is not set}"
+        : "${PROJECT_NAME:?PROJECT_NAME is not set}"
+        if [ -z "${GMAIL_CREDENTIALS_JSON:-}" ]; then
+          echo "::error::GMAIL_CREDENTIALS_JSON secret is not set"
+          exit 1
+        fi
+        if [ -z "${GMAIL_TOKEN_JSON:-}" ]; then
+          echo "::error::GMAIL_TOKEN_JSON secret is not set"
+          exit 1
+        fi
+        if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+          echo "::error::AWS credentials secrets are not set"
+          exit 1
+        fi
+        echo "Deployment environment validated: region=${AWS_REGION}, project=${PROJECT_NAME}"
+      env:
+        GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+        GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
@@ -120,7 +146,12 @@ jobs:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-    
+
+    - name: Verify AWS authentication
+      run: |
+        set -euo pipefail
+        aws sts get-caller-identity
+
     # - name: Tag and Push Docker Image to ECR
     #   run: |
     #     echo "Logging in to Amazon ECR..."
@@ -129,37 +160,86 @@ jobs:
     #     docker tag spend_sense:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}
     #     docker push ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}
     #     echo "image=${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT 
-    - name: Deploy to AWS
-      id: deploy-aws
+
+    - name: Terraform Init (S3 remote backend)
+      id: tf-init
+      working-directory: deploy_1
+      run: terraform init -input=false
+
+    - name: Import existing secrets if not already tracked in state
+      working-directory: deploy_1
+      run: |
+        set -euo pipefail
+        import_if_missing() {
+          local resource_addr="$1"
+          local secret_name="$2"
+          if terraform state show "${resource_addr}" >/dev/null 2>&1; then
+            echo "${resource_addr} already tracked in state, skipping import."
+            return 0
+          fi
+          local arn
+          arn=$(aws secretsmanager describe-secret --secret-id "${secret_name}" --query 'ARN' --output text 2>/dev/null || true)
+          if [ -z "${arn}" ] || [ "${arn}" = "None" ]; then
+            echo "${secret_name} does not exist yet, Terraform will create it."
+            return 0
+          fi
+          aws secretsmanager restore-secret --secret-id "${secret_name}" --region "${AWS_REGION}" 2>/dev/null || true
+          terraform import "${resource_addr}" "${arn}"
+        }
+
+        import_if_missing "${AWS_SECRET_NAME}.${AWS_SECRET_RESOURCE_CREDENTIAL}" "${SECRET_CREDENTIAL_NAME}"
+        import_if_missing "${AWS_SECRET_NAME}.${AWS_SECRET_RESOURCE_TOKEN}" "${SECRET_TOKEN_NAME}"
+
+    - name: Terraform Plan (remote state)
+      id: tf-plan
+      working-directory: deploy_1
       env:
         TF_VAR_gmail_credentials_json: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
         TF_VAR_gmail_token_json: ${{ secrets.GMAIL_TOKEN_JSON }}
       run: |
+        set -o pipefail
+        terraform plan -input=false -lock-timeout=300s -var="app_image_tag=${{ env.IMAGE_TAG }}" -out=tfplan 2>&1 | tee plan_output.log
+        plan_exit=${PIPESTATUS[0]}
+        if [ "${plan_exit}" -ne 0 ]; then
+          if grep -qi "Error acquiring the state lock" plan_output.log; then
+            echo "::error::Another deployment is already holding the Terraform state lock. Aborting this run."
+          fi
+          exit "${plan_exit}"
+        fi
 
-        echo "Import Secrets if it exists in AWS Secrets Manager"
-        echo "Working directory: $(pwd)"
+    - name: Capture pre-apply state version
+      working-directory: deploy_1
+      run: |
+        set -euo pipefail
+        pre_version=$(aws s3api head-object --bucket "${TF_STATE_BUCKET}" --key "${TF_STATE_KEY}" --query 'VersionId' --output text 2>/dev/null || echo "none")
+        echo "PRE_APPLY_STATE_VERSION=${pre_version}" >> "$GITHUB_ENV"
+        echo "State object version before apply: ${pre_version}"
 
-        cd deploy_1
-        echo "Current directory: $(pwd)"
-        echo "Terraform version: $(terraform version)"
-        
-        terraform init
-        echo "Terraform initialized successfully."
-        terraform destroy -auto-approve
-        echo "Terraform destroyed successfully."
+    - name: Terraform Apply (remote state)
+      id: tf-apply
+      working-directory: deploy_1
+      run: |
+        set -o pipefail
+        terraform apply -input=false -auto-approve -lock-timeout=300s tfplan 2>&1 | tee apply_output.log
+        apply_exit=${PIPESTATUS[0]}
+        if [ "${apply_exit}" -ne 0 ]; then
+          if grep -qi "Error acquiring the state lock" apply_output.log; then
+            echo "::error::Another deployment is already holding the Terraform state lock. Aborting this run."
+          fi
+          exit "${apply_exit}"
+        fi
 
-        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null)
-        aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_CREDENTIAL_NAME }}  --region ${{ env.AWS_REGION }}
-        terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_CREDENTIAL }} "$ARN"
-        echo "Import Secrets if it exists in AWS Secrets Manager"
-        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_TOKEN_NAME }}" --query 'ARN' --output text 2>/dev/null) \
-        && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_TOKEN_NAME }}  --region ${{ env.AWS_REGION }} \
-        && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_TOKEN }} "$ARN" 
-
-        echo "Deploying to AWS"
-        
-        terraform apply -auto-approve -var="app_image_tag=${{ env.IMAGE_TAG }}"
-        
+    - name: Verify Terraform state persisted in S3
+      working-directory: deploy_1
+      run: |
+        set -euo pipefail
+        post_version=$(aws s3api head-object --bucket "${TF_STATE_BUCKET}" --key "${TF_STATE_KEY}" --query 'VersionId' --output text)
+        echo "State object version after apply: ${post_version}"
+        if [ "${post_version}" = "${PRE_APPLY_STATE_VERSION}" ]; then
+          echo "::error::Terraform state object in S3 was not updated by this apply (version unchanged: ${post_version})."
+          exit 1
+        fi
+        echo "Confirmed Terraform state was written to s3://${TF_STATE_BUCKET}/${TF_STATE_KEY} (new version ${post_version})"
 
     # - name: Fill New Image ID in ECS Task Definition
     #   id: task-def

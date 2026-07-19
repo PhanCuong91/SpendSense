@@ -4,3 +4,21 @@
 /full_msg_*.json
 credentials.json
 token.json
+
+# Terraform state, cache, and plan artifacts must never be committed.
+# State is managed remotely in S3 (see deploy_1/backend.tf).
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+*tfplan*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
+.terraformrc
+terraform.rc
