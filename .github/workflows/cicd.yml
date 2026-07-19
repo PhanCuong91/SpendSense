@@ -7,6 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ==========================================
+  # PROCESS 1: RUN CHECK TESTS
+  # ==========================================
   check-label:
     if: github.event.label.name == 'check'
     uses: ./.github/workflows/python-test.yml
@@ -18,7 +21,11 @@ jobs:
     secrets:
       GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
       GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
-  # 2. This job runs when the PR is labeled with "merge"
+
+  # ==========================================
+  # PROCESS 2: RUN MERGE TESTS & AUTO-MERGE
+  # ==========================================
+
   merge-label:
     if: github.event.label.name == 'merge'
     runs-on: ubuntu-latest
@@ -61,6 +68,114 @@ jobs:
               pull_number: context.issue.number,
               merge_method: 'merge'
             })
+
+  # ==========================================
+  # PROCESS 3: CD DEPLOYMENT
+  # ==========================================
+  continuous-deployment:
+    name: Deploy to AWS
+    needs: check-label
+    runs-on: ubuntu-latest
+    env:
+      # COMMIT_SHA: ${{ needs.merge-label.outputs.merged_sha }}
+      COMMIT_SHA: 1234
+      AWS_REGION: ap-southeast-1
+      PROJECT_NAME: spend_sense
+      ECR_REGISTRY: 359615771071.dkr.ecr
+      SECRET_CREDENTIAL_NAME: spendsense_gmail_credentials_json
+      SECRET_TOKEN_NAME: spendsense_gmail_token_json
+      AWS_SECRET_NAME: aws_secretsmanager_secret
+      AWS_SECRET_RESOURCE_CREDENTIAL: gmail_credentials
+      AWS_SECRET_RESOURCE_TOKEN: gmail_token
+
+    # Add these exact permissions lines:
+    permissions:
+      id-token: write   # Mandatory for OIDC authentication with AWS
+      contents: read    # Mandatory for actions/checkout to read your code
+    steps:
+    - name: Name for AWS resouce access
+      run: |
+        echo "IMAGE_TAG=1234" >> $GITHUB_ENV
+
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.9.0" # Specify your required version here
+
+    - name: Build docker image
+      id: build-image
+      run: |
+        docker build -t spend_sense:${{ env.IMAGE_TAG }} .
+
+        # docker push 359615771071.dkr.ecr.ap-southeast-1.amazonaws.com/spend_sense:1.0.3
+        # docker tag spend_sense:1.0.3 359615771071.dkr.ecr.ap-southeast-1.amazonaws.com/spend_sense:1.0.3
+    - name: Login to AWS
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    # - name: Tag and Push Docker Image to ECR
+    #   run: |
+    #     echo "Logging in to Amazon ECR..."
+    #     aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com
+    #     echo "Tagging and pushing the Docker image..."
+    #     docker tag spend_sense:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}
+    #     docker push ${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}
+    #     echo "image=${{ env.ECR_REGISTRY }}.${{env.AWS_REGION}}.amazonaws.com/${{ env.PROJECT_NAME }}:${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT 
+    - name: Deploy to AWS
+      id: deploy-aws
+      env:
+        TF_VAR_gmail_credentials_json: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+        TF_VAR_gmail_token_json: ${{ secrets.GMAIL_TOKEN_JSON }}
+      run: |
+
+        echo "Import Secrets if it exists in AWS Secrets Manager"
+        echo "Working directory: $(pwd)"
+
+        cd deploy_1
+        echo "Current directory: $(pwd)"
+        echo "Terraform version: $(terraform version)"
+        
+        terraform init
+        echo "Terraform initialized successfully."
+        terraform destroy -auto-approve
+        echo "Terraform destroyed successfully."
+
+        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_CREDENTIAL_NAME }}" --query 'ARN' --output text 2>/dev/null)
+        aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_CREDENTIAL_NAME }}  --region ${{ env.AWS_REGION }}
+        terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_CREDENTIAL }} "$ARN"
+        echo "Import Secrets if it exists in AWS Secrets Manager"
+        ARN=$(aws secretsmanager describe-secret --secret-id "${{ env.SECRET_TOKEN_NAME }}" --query 'ARN' --output text 2>/dev/null) \
+        && aws secretsmanager restore-secret --secret-id  ${{ env.SECRET_TOKEN_NAME }}  --region ${{ env.AWS_REGION }} \
+        && terraform import ${{ env.AWS_SECRET_NAME }}.${{ env.AWS_SECRET_RESOURCE_TOKEN }} "$ARN" 
+
+        echo "Deploying to AWS"
+        
+        terraform apply -auto-approve -var="app_image_tag=${{ env.IMAGE_TAG }}"
+        
+
+    # - name: Fill New Image ID in ECS Task Definition
+    #   id: task-def
+    #   uses: aws-actions/amazon-ecs-render-task-definition@v1
+    #   with:
+    #     task-definition: ${{ env:ECS_TASK_DEFINITION }}
+    #     container-name: ${{ env:CONTAINER_NAME }}
+    #     image: ${{ steps.build-image.outputs.image }}
+
+    # - name: Deploy Amazon ECS Task Definition
+    #   uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+    #   with:
+    #     task-definition: ${{ steps.task-def.outputs.task-definition }}
+    #     service: ${{ env:ECS_SERVICE }}
+    #     cluster: ${{ env:ECS_CLUSTER }}
+    #     wait-for-service-stability: true
 
   cleanup:
     if: always()

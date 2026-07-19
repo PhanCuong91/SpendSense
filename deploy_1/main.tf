@@ -46,7 +46,7 @@ resource "aws_secretsmanager_secret" "gmail_credentials" {
 
 resource "aws_secretsmanager_secret_version" "gmail_credentials_version" {
   secret_id     = aws_secretsmanager_secret.gmail_credentials.id
-  secret_string = file(var.gmail_credentials_file)
+  secret_string = var.gmail_credentials_json != null ? var.gmail_credentials_json : file(var.gmail_credentials_file)
 }
 
 resource "aws_secretsmanager_secret" "gmail_token" {
@@ -56,7 +56,7 @@ resource "aws_secretsmanager_secret" "gmail_token" {
 
 resource "aws_secretsmanager_secret_version" "gmail_token_version" {
   secret_id     = aws_secretsmanager_secret.gmail_token.id
-  secret_string = file(var.gmail_token_file)
+  secret_string = var.gmail_token_json != null ? var.gmail_token_json : file(var.gmail_token_file)
 }
 
 resource "aws_efs_file_system" "app_fs" {
@@ -199,6 +199,30 @@ resource "aws_iam_role" "ecs_task_role" {
   tags = local.common_tags
 }
 
+resource "aws_iam_role_policy" "ecs_task_s3_policy" {
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = "arn:aws:s3:::spensense-db-359615771071-ap-southeast-1-an"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = "arn:aws:s3:::spensense-db-359615771071-ap-southeast-1-an/txdb.sqlite3"
+      }
+    ]
+  })
+}
+
 resource "aws_ecs_cluster" "app_cluster" {
   name = "${var.project_name}-cluster"
   tags = local.common_tags
@@ -258,6 +282,12 @@ resource "aws_ecs_task_definition" "app_task" {
           "awslogs-stream-prefix" = var.project_name
         }
       }
+
+      command = [
+        "/bin/sh",
+        "-c",
+        "mkdir -p ${var.db_mount_path} && if [ ! -f ${var.db_mount_path}/txdb.sqlite3 ] || [ ! -s ${var.db_mount_path}/txdb.sqlite3 ]; then python - <<'PY'\nimport os\nimport boto3\nfrom botocore.config import Config\nfrom pathlib import Path\n\nbucket = 'spensense-db-359615771071-ap-southeast-1-an'\nkey = 'txdb.sqlite3'\ndest = Path('${var.db_mount_path}') / 'txdb.sqlite3'\ndest.parent.mkdir(parents=True, exist_ok=True)\ns3 = boto3.client('s3', config=Config(signature_version='s3v4'))\ns3.download_file(bucket, key, str(dest))\nPY\nfi && exec python -m app.workers.poller_worker --host 0.0.0.0 --port 8000"
+      ]
 
       mountPoints = [
         {
