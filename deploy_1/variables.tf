@@ -47,6 +47,36 @@ variable "db_file_path" {
   default     = "sqlite:///./data/txdb.sqlite3"
 }
 
+variable "db_backup_bucket" {
+  description = "S3 bucket used by the backup ECS task to store the SQLite database."
+  type        = string
+  default     = "spensense-db-359615771071-ap-southeast-1-an"
+}
+
+variable "db_backup_key" {
+  description = "S3 object key used by the backup ECS task to store the SQLite database."
+  type        = string
+  default     = "txdb.sqlite3"
+}
+
+variable "backup_task_cpu" {
+  description = "CPU allocation for the one-off backup ECS task."
+  type        = string
+  default     = "512"
+}
+
+variable "backup_task_memory" {
+  description = "Memory allocation for the one-off backup ECS task (MiB)."
+  type        = string
+  default     = "1024"
+}
+
+variable "backup_container_image_tag" {
+  description = "Container image used for the one-off backup ECS task."
+  type        = string
+  default     = "backup-efs-amd64"
+}
+
 variable "schedule_start_expression" {
   description = "CloudWatch cron expression to start the ECS service. Uses UTC timezone."
   type        = string
@@ -106,14 +136,14 @@ variable "gmail_token_json" {
 variable "vpc_id" {
   type        = string
   description = "VPC where EC2/EFS will be deployed"
-  default = "vpc-0e67ef7841be38480"
+  default     = "vpc-0e67ef7841be38480"
 }
 
 
 variable "private_subnet_ids" {
   type        = list(string)
   description = "Private subnets for EFS mount targets"
-  default = [ "subnet-055480c6716bfb03a" ]
+  default     = ["subnet-055480c6716bfb03a"]
 }
 
 variable "public_subnet_ids" {

@@ -103,9 +103,9 @@ resource "aws_security_group" "efs_sg" {
 }
 
 resource "aws_efs_mount_target" "mt" {
-  count           = length(var.private_subnet_ids)
+  count           = length(local.ecs_subnet_ids)
   file_system_id  = aws_efs_file_system.app_fs.id
-  subnet_id       = var.private_subnet_ids[count.index]
+  subnet_id       = local.ecs_subnet_ids[count.index]
   security_groups = [aws_security_group.efs_sg.id]
 }
 
@@ -210,14 +210,21 @@ resource "aws_iam_role_policy" "ecs_task_s3_policy" {
         Action = [
           "s3:ListBucket"
         ]
-        Resource = "arn:aws:s3:::spensense-db-359615771071-ap-southeast-1-an"
+        Resource = "arn:aws:s3:::${var.db_backup_bucket}"
       },
       {
         Effect = "Allow"
         Action = [
           "s3:GetObject"
         ]
-        Resource = "arn:aws:s3:::spensense-db-359615771071-ap-southeast-1-an/txdb.sqlite3"
+        Resource = "arn:aws:s3:::${var.db_backup_bucket}/${var.db_backup_key}"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject"
+        ]
+        Resource = "arn:aws:s3:::${var.db_backup_bucket}/${var.db_backup_key}"
       }
     ]
   })
@@ -241,12 +248,12 @@ resource "aws_ecs_task_definition" "app_task" {
     name = "efs-data"
 
     efs_volume_configuration {
-      file_system_id          = aws_efs_file_system.app_fs.id
+      file_system_id = aws_efs_file_system.app_fs.id
       authorization_config {
         access_point_id = aws_efs_access_point.app_ap.id
         iam             = "DISABLED"
       }
-      transit_encryption   = "ENABLED"
+      transit_encryption = "ENABLED"
     }
   }
 
@@ -286,7 +293,7 @@ resource "aws_ecs_task_definition" "app_task" {
       command = [
         "/bin/sh",
         "-c",
-        "mkdir -p ${var.db_mount_path} && if [ ! -f ${var.db_mount_path}/txdb.sqlite3 ] || [ ! -s ${var.db_mount_path}/txdb.sqlite3 ]; then python - <<'PY'\nimport os\nimport boto3\nfrom botocore.config import Config\nfrom pathlib import Path\n\nbucket = 'spensense-db-359615771071-ap-southeast-1-an'\nkey = 'txdb.sqlite3'\ndest = Path('${var.db_mount_path}') / 'txdb.sqlite3'\ndest.parent.mkdir(parents=True, exist_ok=True)\ns3 = boto3.client('s3', config=Config(signature_version='s3v4'))\ns3.download_file(bucket, key, str(dest))\nPY\nfi && exec python -m app.workers.poller_worker --host 0.0.0.0 --port 8000"
+        "mkdir -p ${var.db_mount_path} && if [ ! -f ${var.db_mount_path}/txdb.sqlite3 ] || [ ! -s ${var.db_mount_path}/txdb.sqlite3 ]; then python - <<'PY'\nimport os\nimport boto3\nfrom botocore.config import Config\nfrom pathlib import Path\n\nbucket = '${var.db_backup_bucket}'\nkey = '${var.db_backup_key}'\ndest = Path('${var.db_mount_path}') / 'txdb.sqlite3'\ndest.parent.mkdir(parents=True, exist_ok=True)\ns3 = boto3.client('s3', config=Config(signature_version='s3v4'))\ns3.download_file(bucket, key, str(dest))\nPY\nfi && exec python -m app.workers.poller_worker --host 0.0.0.0 --port 8000"
       ]
 
       mountPoints = [
@@ -300,18 +307,170 @@ resource "aws_ecs_task_definition" "app_task" {
   ])
 }
 
+resource "aws_ecs_task_definition" "backup_task" {
+  family                   = "${var.project_name}-backup-task"
+  cpu                      = var.backup_task_cpu
+  memory                   = var.backup_task_memory
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
+
+  volume {
+    name = "efs-data"
+
+    efs_volume_configuration {
+      file_system_id = aws_efs_file_system.app_fs.id
+      authorization_config {
+        access_point_id = aws_efs_access_point.app_ap.id
+        iam             = "DISABLED"
+      }
+      transit_encryption = "ENABLED"
+    }
+  }
+
+  container_definitions = jsonencode([
+    {
+      name      = "${var.project_name}-backup"
+      image     = "${aws_ecr_repository.app.repository_url}:${var.backup_container_image_tag}"
+      essential = true
+
+      environment = [
+        {
+          name  = "S3_BUCKET"
+          value = var.db_backup_bucket
+        },
+        {
+          name  = "S3_KEY"
+          value = var.db_backup_key
+        },
+        {
+          name  = "DB_PATH"
+          value = "${var.db_mount_path}/txdb.sqlite3"
+        }
+      ]
+
+      command = [
+        "/bin/sh",
+        "-c",
+        "set -e; if [ -f ${var.db_mount_path}/txdb.sqlite3 ]; then aws s3 cp ${var.db_mount_path}/txdb.sqlite3 s3://${var.db_backup_bucket}/${var.db_backup_key}; else echo 'Database file not found at ${var.db_mount_path}/txdb.sqlite3' >&2; exit 1; fi"
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs_logs.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "${var.project_name}-backup"
+        }
+      }
+
+      mountPoints = [
+        {
+          sourceVolume  = "efs-data"
+          containerPath = var.db_mount_path
+          readOnly      = false
+        }
+      ]
+    }
+  ])
+}
+
+resource "aws_iam_role" "eventbridge_ecs_role" {
+  name = "${var.project_name}-eventbridge-ecs-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "eventbridge_ecs_policy" {
+  role = aws_iam_role.eventbridge_ecs_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ecs:RunTask"]
+        Resource = [aws_ecs_task_definition.backup_task.arn]
+      },
+      {
+        Effect = "Allow"
+        Action = ["iam:PassRole"]
+        Resource = [
+          aws_iam_role.ecs_task_execution_role.arn,
+          aws_iam_role.ecs_task_role.arn
+        ]
+        Condition = {
+          StringLike = {
+            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudwatch_event_rule" "app_task_stopped" {
+  name        = "${var.project_name}-app-task-stopped"
+  description = "Run the database backup task after the main ECS task has stopped"
+
+  event_pattern = jsonencode({
+    source      = ["aws.ecs"]
+    detail-type = ["ECS Task State Change"]
+    detail = {
+      lastStatus    = ["STOPPED"]
+      desiredStatus = ["STOPPED"]
+      clusterArn    = [aws_ecs_cluster.app_cluster.arn]
+      group         = ["service:${aws_ecs_service.app_service.name}"]
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "run_backup_task" {
+  rule = aws_cloudwatch_event_rule.app_task_stopped.name
+  arn  = aws_ecs_cluster.app_cluster.arn
+
+  role_arn = aws_iam_role.eventbridge_ecs_role.arn
+
+  ecs_target {
+    launch_type         = "FARGATE"
+    task_count          = 1
+    task_definition_arn = aws_ecs_task_definition.backup_task.arn
+    platform_version    = "1.4.0"
+
+    network_configuration {
+      subnets          = local.ecs_subnet_ids
+      security_groups  = [aws_security_group.ecs_sg.id]
+      assign_public_ip = true
+    }
+  }
+}
+
 resource "aws_ecs_service" "app_service" {
-  name            = "${var.project_name}-service"
-  cluster         = aws_ecs_cluster.app_cluster.id
-  task_definition = aws_ecs_task_definition.app_task.arn
-  desired_count   = var.enable_schedule ? 0 : 1
-  launch_type     = "FARGATE"
+  name             = "${var.project_name}-service"
+  cluster          = aws_ecs_cluster.app_cluster.id
+  task_definition  = aws_ecs_task_definition.app_task.arn
+  desired_count    = var.enable_schedule ? 0 : 1
+  launch_type      = "FARGATE"
   platform_version = "1.4.0"
 
   network_configuration {
     # Use explicit public subnet IDs if provided, otherwise fall back to configured subnets.
-    subnets         = local.ecs_subnet_ids
-    security_groups = [aws_security_group.ecs_sg.id]
+    subnets          = local.ecs_subnet_ids
+    security_groups  = [aws_security_group.ecs_sg.id]
     assign_public_ip = true
   }
 
