@@ -74,11 +74,11 @@ jobs:
   # ==========================================
   continuous-deployment:
     name: Deploy to AWS
-    needs: check-label
+    needs: merge-label
     runs-on: ubuntu-latest
     env:
-      # COMMIT_SHA: ${{ needs.merge-label.outputs.merged_sha }}
-      COMMIT_SHA: 1234
+      COMMIT_SHA: ${{ needs.merge-label.outputs.merged_sha }}
+      #COMMIT_SHA: 1234
       AWS_REGION: ap-southeast-1
       PROJECT_NAME: spend_sense
       ECR_REGISTRY: 359615771071.dkr.ecr
