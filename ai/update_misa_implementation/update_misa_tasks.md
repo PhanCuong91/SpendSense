@@ -50,7 +50,7 @@ Required actions:
 1. [x] Add `app/misa/__init__.py` and `app/misa/models.py` with
    `MisaTransaction` (amount, account, datetime, category) and
    `MisaImportResult` (success, error_message) dataclasses.
-2. [ ] Implement `app/misa/query.py`: SQLAlchemy query over
+2. [x] Implement `app/misa/query.py`: SQLAlchemy query over
    `ParsedTransactionCandidate` (reusing `app/db/session.py`), plus
    `classify(row) -> Literal["Spend", "Earn", None]` using only
    `inferred_sender`/`inferred_receiver` vs `"Other"` (no `debit_credit`/
