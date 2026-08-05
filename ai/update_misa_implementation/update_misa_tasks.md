@@ -47,7 +47,7 @@ can be stubbed/mocked until then):
 No browser or MISA dependency — can start immediately.
 
 Required actions:
-1. [ ] Add `app/misa/__init__.py` and `app/misa/models.py` with
+1. [x] Add `app/misa/__init__.py` and `app/misa/models.py` with
    `MisaTransaction` (amount, account, datetime, category) and
    `MisaImportResult` (success, error_message) dataclasses.
 2. [ ] Implement `app/misa/query.py`: SQLAlchemy query over
