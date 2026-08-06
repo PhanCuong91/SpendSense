@@ -43,7 +43,7 @@ can be stubbed/mocked until then):
 
 ## 5. Required Tasks
 
-### 5.1 Data Layer [ ]
+### 5.1 Data Layer [x]
 No browser or MISA dependency — can start immediately.
 
 Required actions:
@@ -56,20 +56,20 @@ Required actions:
    `inferred_sender`/`inferred_receiver` vs `"Other"` (no `debit_credit`/
    `type_info`). Support optional `start_date`/`end_date` filtering on
    `datetime_sgt`.
-3. [ ] Implement `app/misa/mapper.py`: `to_misa_transaction(row, classification)`
+3. [x] Implement `app/misa/mapper.py`: `to_misa_transaction(row, classification)`
    per the field mapping table (Account = `inferred_sender` for Spend,
    `inferred_receiver` for Earn; `category` fixed to `"Bar & Coffee"`;
    datetime formatting isolated in one function, placeholder ISO format
    pending Blocking Prerequisite 2).
-4. [ ] Implement `app/misa/dedup_store.py`: JSON store keyed by candidate `id`,
+4. [x] Implement `app/misa/dedup_store.py`: JSON store keyed by candidate `id`,
    with `is_imported(id)`, `mark_imported(id, metadata)`, atomic
    write-temp-then-rename save. Default path
    `ai/update_misa_implementation/imported_state.json`.
-5. [ ] Add `tests/test_misa_query.py` covering the classification truth table
+5. [x] Add `tests/test_misa_query.py` covering the classification truth table
    (Spend, Earn, both-`"Other"` excluded, neither-`"Other"`/InternalTransfer
    excluded — confirmed against real data) and the field mapping for both a
    Spend row and an Earn row.
-6. [ ] Add `tests/test_misa_dedup.py` covering: a fresh store treats all ids
+6. [x] Add `tests/test_misa_dedup.py` covering: a fresh store treats all ids
    as not-imported; marking imported persists across reload; a failed
    attempt is never written so remains eligible for retry.
 
