@@ -5,6 +5,14 @@
 credentials.json
 token.json
 
+# Environment variables for MISA credentials (contains secrets, e.g.
+# MISA_USERNAME/MISA_PASSWORD) — keep these out of the tracked .env.
+.env.misa
+.env.misa.local
+
+# Playwright storage_state (persisted login session cookies) for MISA export
+ai/update_misa_implementation/*.storage_state.json
+
 # Terraform state, cache, and plan artifacts must never be committed.
 # State is managed remotely in S3 (see deploy_1/backend.tf).
 **/.terraform/*

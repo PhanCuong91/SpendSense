@@ -41,6 +41,10 @@ lint:
 fmt:
     black app tests
 
+# One-time setup for MISA export automation (installs the Playwright chromium browser)
+misa-setup:
+    playwright install chromium
+
 
 migrate:
     alembic upgrade head

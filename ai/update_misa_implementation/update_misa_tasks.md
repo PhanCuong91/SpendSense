@@ -75,14 +75,14 @@ Required actions:
 
 ### 5.2 MISA Automation Layer [ ]
 Required actions:
-1. [ ] Add `playwright` to `requirements.txt`; document
+1. [x] Add `playwright` to `requirements.txt`; document
    `playwright install chromium` as a setup step in README/Makefile.
-2. [ ] Create `app/misa/selectors.py` with named placeholder constants for:
+2. [x] Create `app/misa/selectors.py` with named placeholder constants for:
    login username/password inputs + submit button, Import button, popup
    amount/account/date/category fields, popup Save button, success indicator,
    error indicator. Fill in real values once Blocking Prerequisite 1 is
    available.
-3. [ ] Implement `app/misa/client.py`:
+3. [x] Implement `app/misa/client.py`:
    - `login(page, username, password)` with 2FA/captcha interactive fallback
      and `storage_state` persistence/reuse.
    - `add_transaction(page, tx: MisaTransaction) -> MisaImportResult` (click
