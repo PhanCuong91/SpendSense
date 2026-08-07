@@ -1,0 +1,213 @@
+"""CLI entrypoint: import not-yet-imported Spend/Earn transactions from
+`data/txdb.sqlite3` into MISA Money Keeper.
+
+Usage:
+    python -m app.misa.runner [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]
+        [--state-file PATH] [--headed] [--dry-run]
+
+See ai/update_misa_implementation/update_misa_design.md §5/§6/§7 for the
+orchestration, logging, and CLI design this implements.
+
+Orchestration: load dedup store -> query + classify + map -> filter
+already-imported rows -> (--dry-run: print planned imports, exit) -> else
+launch Playwright, log in, loop rows calling `client.add_transaction()`,
+update the dedup store on each success, log per-row success/failure, print
+an end-of-run summary.
+
+Credentials: MISA_USERNAME / MISA_PASSWORD are loaded from `.env.misa` (kept
+separate from the main `.env`, gitignored) via python-dotenv, matching the
+convention already established by scripts/misa_login_check.py and friends.
+"""
+
+import argparse
+import os
+import sys
+from datetime import date, datetime, timezone
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+from dotenv import load_dotenv
+from playwright.sync_api import sync_playwright
+
+from app.core.logging import get_logger
+from app.db.models.parsed_candidate import ParsedTransactionCandidate
+from app.db.session import SessionLocal
+from app.misa import client
+from app.misa.dedup_store import DEFAULT_STATE_FILE, DedupStore
+from app.misa.mapper import to_misa_transaction
+from app.misa.models import MisaTransaction
+from app.misa.query import Classification, get_classified_candidates
+
+logger = get_logger(__name__)
+
+PlannedRow = Tuple[ParsedTransactionCandidate, Classification, MisaTransaction]
+
+
+def _parse_date(value: str) -> date:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid date {value!r}, expected YYYY-MM-DD") from exc
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Import not-yet-imported Spend/Earn transactions into MISA Money Keeper."
+    )
+    parser.add_argument("--start-date", type=_parse_date, default=None, help="Inclusive start date (YYYY-MM-DD)")
+    parser.add_argument("--end-date", type=_parse_date, default=None, help="Inclusive end date (YYYY-MM-DD)")
+    parser.add_argument(
+        "--state-file", default=DEFAULT_STATE_FILE, help="Path to the dedup state JSON file"
+    )
+    parser.add_argument("--headed", action="store_true", help="Run with a visible (non-headless) browser")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Classify/map rows and print what would be imported, without launching a browser "
+        "or touching the dedup store",
+    )
+    return parser
+
+
+def _plan_rows(
+    dedup_store: DedupStore, start_date: Optional[date], end_date: Optional[date]
+) -> Tuple[List[PlannedRow], int, int]:
+    """Query, classify, map, and filter out already-imported rows.
+
+    Returns (planned_rows, considered_count, skipped_count).
+    """
+    db = SessionLocal()
+    try:
+        classified = get_classified_candidates(db, start_date=start_date, end_date=end_date)
+        considered = len(classified)
+        planned: List[PlannedRow] = []
+        skipped = 0
+        for row, classification in classified:
+            if dedup_store.is_imported(row.id):
+                skipped += 1
+                continue
+            planned.append((row, classification, to_misa_transaction(row, classification)))
+        return planned, considered, skipped
+    finally:
+        db.close()
+
+
+def _run_dry(planned: List[PlannedRow], considered: int, skipped: int) -> int:
+    logger.info(
+        "Dry run: %d row(s) would be imported (considered=%d, skipped(already imported)=%d)",
+        len(planned),
+        considered,
+        skipped,
+    )
+    for row, classification, tx in planned:
+        logger.info(
+            "[would-import] id=%s type=%s amount=%s account=%s datetime=%s category=%s",
+            row.id,
+            classification,
+            tx.amount,
+            tx.account,
+            tx.datetime,
+            tx.category,
+        )
+    return 0
+
+
+def _run_import(planned: List[PlannedRow], considered: int, skipped: int, dedup_store: DedupStore, headed: bool) -> int:
+    username = os.environ.get("MISA_USERNAME")
+    password = os.environ.get("MISA_PASSWORD")
+    if not username or not password:
+        logger.error("MISA_USERNAME and MISA_PASSWORD must be set (see .env.misa)")
+        return 1
+
+    imported = 0
+    failed = 0
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=not headed)
+        try:
+            storage_state_path = client.DEFAULT_STORAGE_STATE_PATH
+            has_saved_session = Path(storage_state_path).exists()
+            context = browser.new_context(
+                storage_state=storage_state_path if has_saved_session else None
+            )
+            page = context.new_page()
+
+            logged_in = has_saved_session and client.is_logged_in(page)
+            if not logged_in:
+                logged_in = client.login(page, username, password)
+                if logged_in:
+                    client.save_session(context)
+
+            if not logged_in:
+                logger.error("Login failed; aborting run without attempting any imports")
+                return 1
+
+            for row, classification, tx in planned:
+                result = client.add_transaction(page, tx)
+                if result.success:
+                    imported += 1
+                    dedup_store.mark_imported(
+                        row.id,
+                        {
+                            "imported_at": datetime.now(timezone.utc).isoformat(),
+                            "amount": tx.amount,
+                            "account": tx.account,
+                            "classification": classification,
+                        },
+                    )
+                    logger.info(
+                        "[imported] id=%s amount=%s account=%s datetime=%s",
+                        row.id,
+                        tx.amount,
+                        tx.account,
+                        tx.datetime,
+                    )
+                else:
+                    failed += 1
+                    logger.error(
+                        "[failed]   id=%s amount=%s account=%s datetime=%s reason=%s",
+                        row.id,
+                        tx.amount,
+                        tx.account,
+                        tx.datetime,
+                        result.error_message,
+                    )
+        finally:
+            browser.close()
+
+    logger.info(
+        "Summary: considered=%d imported=%d failed=%d skipped(already imported)=%d",
+        considered,
+        imported,
+        failed,
+        skipped,
+    )
+    return 0 if failed == 0 else 1
+
+
+def run(args: argparse.Namespace) -> int:
+    dedup_store = DedupStore(path=args.state_file)
+    planned, considered, skipped = _plan_rows(dedup_store, args.start_date, args.end_date)
+
+    if args.dry_run:
+        return _run_dry(planned, considered, skipped)
+
+    if not planned:
+        logger.info(
+            "Summary: considered=%d imported=0 failed=0 skipped(already imported)=%d",
+            considered,
+            skipped,
+        )
+        return 0
+
+    return _run_import(planned, considered, skipped, dedup_store, args.headed)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    load_dotenv(".env.misa")
+    args = build_arg_parser().parse_args(argv)
+    return run(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

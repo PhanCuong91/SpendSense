@@ -122,7 +122,11 @@ Required actions:
      selection); and uses `POPUP_SAVE_AND_ADD_BUTTON`, which leaves the
      popup open in "add another" mode rather than closing it. These three
      gaps must be closed before `add_transaction()` can be used for a real
-     per-row import loop (see design §12 item 4).
+     per-row import loop (see design §12 item 4). **Update (2026-08-08)**:
+     a fourth, previously-undiscovered bug in the success/error detection
+     itself was found and fixed via `tests/test_misa_client.py` (§5.2 item
+     5) — see that item's note for details. The three gaps above are
+     still open.
 4. [x] Add test fixtures `tests/fixtures/misa_login.html` and
    `tests/fixtures/misa_transactions.html` mimicking the real MISA DOM closely
    enough to exercise the selectors in `selectors.py`. **Done (2026-08-08)**
@@ -136,24 +140,70 @@ Required actions:
    qualifier from accidentally also resolving inside the Earn panel's
    subtree (both panels stay mounted simultaneously, `hidden`-toggled, like
    the real site).
-5. [ ] Add Playwright tests `tests/test_misa_client.py`: login success/failure
+5. [x] Add Playwright tests `tests/test_misa_client.py`: login success/failure
    detection, `add_transaction` success/failure detection, and that one row's
-   exception doesn't stop others.
+   exception doesn't stop others. **Done (2026-08-08)** — 7 tests, all
+   passing against `tests/fixtures/misa_login.html`/`misa_transactions.html`
+   (a small dynamic submit handler was added to `misa_login.html` so it can
+   simulate real success/failure login outcomes based on the credentials
+   passed in, not just a static body-class toggle). This work uncovered and
+   fixed a real bug in `client.py`'s `add_transaction()`: it waited on a
+   single combined selector `f"{SUCCESS_INDICATOR}, {ERROR_INDICATOR}"`,
+   but Playwright's `text=` engine consumes an unescaped comma as part of
+   its own search text instead of treating it as a selector-list
+   separator, so the wait silently timed out even when the indicator was
+   genuinely visible. Fixed by replacing it with a poll loop
+   (`_wait_for_save_outcome()`), mirroring the existing
+   `_wait_for_login_outcome()` pattern.
 
 ### 5.3 Runner / CLI [ ]
 Required actions:
-1. [ ] Implement `app/misa/runner.py`: load dedup store → query + classify +
+1. [x] Implement `app/misa/runner.py`: load dedup store → query + classify +
    map → filter already-imported → (if `--dry-run`, print planned imports and
    exit) → else launch Playwright, login, loop rows calling
    `add_transaction`, update dedup store on success, log per-row
    success/failure, print end-of-run summary (considered/imported/failed/
    skipped). CLI flags: `--start-date`, `--end-date`, `--state-file`,
-   `--headed`, `--dry-run`.
-2. [ ] Wire up logging (reuse `app/core/logging.py` if suitable, else a local
-   `logging.basicConfig`) per the design's log line formats.
-3. [ ] Add `.env` support for `MISA_USERNAME`/`MISA_PASSWORD` via
+   `--headed`, `--dry-run`. **Done (2026-08-08)** — verified via
+   `python -m app.misa.runner --dry-run` against the real
+   `data/txdb.sqlite3`: 187 rows planned (182 Spend + 5 Earn, matching the
+   §5.4 item 1 expectation), 0 skipped. Reuses `app/core/logging.py`'s
+   `get_logger()` and loads `MISA_USERNAME`/`MISA_PASSWORD` from
+   `.env.misa` via `python-dotenv` (same convention as the manual scripts
+   in `scripts/`, not the main `.env`) — this covers items 2 and 3 below
+   as a side effect of implementation, though neither has been separately
+   re-verified as its own checklist item. The real (non-dry-run) import
+   path still inherits `add_transaction()`'s known gaps (§5.2 item 3:
+   Spend-tab-hardcoded, `POPUP_SAVE_AND_ADD_BUTTON` instead of
+   `POPUP_SAVE_AND_CLOSE_BUTTON`, no category click-to-select) and has not
+   been run against real MISA yet.
+2. [x] Wire up logging (reuse `app/core/logging.py` if suitable, else a local
+   `logging.basicConfig`) per the design's log line formats. **Done
+   (2026-08-08)** — `runner.py` reuses `app/core/logging.py`'s
+   `get_logger(__name__)` (stdout + rotating `app.log`). Verified the three
+   design-specified line shapes exactly, via `tests/test_misa_runner.py`
+   capturing records directly off `runner.logger` (bypassing `caplog`,
+   which misses everything since `get_logger()` sets `propagate = False`):
+   `[imported] id=... amount=... account=... datetime=...` (INFO),
+   `[failed]   id=... amount=... account=... datetime=... reason=...`
+   (ERROR), `Summary: considered=%d imported=%d failed=%d
+   skipped(already imported)=%d` (INFO), and the dry-run
+   `[would-import] id=... type=... amount=... account=... datetime=...
+   category=...` line.
+3. [x] Add `.env` support for `MISA_USERNAME`/`MISA_PASSWORD` via
    `python-dotenv`; confirm `.env` and any `storage_state` session file are in
-   `.gitignore`.
+   `.gitignore`. **Done (2026-08-08)** — `main()` calls
+   `load_dotenv(".env.misa")` (not the main `.env`, which is reserved for
+   the FastAPI app's `pydantic` `Settings`); verified via
+   `tests/test_misa_runner.py::test_main_loads_dotenv_from_env_misa_file_not_main_env`.
+   `.gitignore` confirmed (and asserted in
+   `test_gitignore_covers_misa_secrets_and_session_state`) to cover
+   `.env.misa`, `*.storage_state.json`, and `app.log`. Also added a test
+   (`test_credentials_are_never_logged`) confirming `MISA_USERNAME`/
+   `MISA_PASSWORD` values never appear in any log line, and a test
+   (`test_summary_logged_when_credentials_missing`) confirming a missing
+   credential aborts with a clear error *before* `sync_playwright()` is
+   ever called (no browser launch, no partial run).
 
 ### 5.4 Verification [ ]
 Required actions:
