@@ -113,8 +113,8 @@ endif
 |---|---|---|
 | `amount` | `amount` | `amount` |
 | `account` | `inferred_sender` | `inferred_receiver` |
-| `datetime` | `datetime_sgt` (formatted, see §7.3 below / requirements §10.2) | same |
-| `category` | fixed constant `"Bar & Coffee"` | fixed constant `"Bar & Coffee"` |
+| `datetime` | `datetime_sgt` (formatted `DD/MM/YYYY HH:MM`, confirmed — requirements §10.2) | same |
+| `category` | fixed constant `CATEGORY = "Bars & Coffee"` | fixed constant `EARN_CATEGORY = "Balance"` (confirmed 2026-08-07: Spend and Earn have distinct category lists in MISA, so a single shared category is invalid for one of the two types) |
 
 ### 4.3 Dedup store (`dedup_store.py`)
 - JSON file, default path `ai/update_misa_implementation/imported_state.json`
@@ -139,11 +139,27 @@ endif
 ## 5. MISA Automation Layer
 
 ### 5.1 `selectors.py`
-All selectors kept as named constants (e.g. `LOGIN_USERNAME_INPUT`,
-`IMPORT_BUTTON`, `POPUP_AMOUNT_INPUT`, `POPUP_SAVE_BUTTON`, `SUCCESS_TOAST`,
-`ERROR_MESSAGE`). Currently placeholders — must be filled in once the real
-MISA DOM is inspected (requirements §3.3 / §10.1). No other module should
-contain a hardcoded selector string.
+All selectors kept as named constants. **Confirmed working (2026-08-07)** via
+manual scripts, following a `_SPEND_`/`_EARN_` naming convention for any
+field whose DOM location differs between the two popup tabs:
+`LOGIN_USERNAME_INPUT`, `LOGIN_PASSWORD_INPUT`, `LOGIN_SUBMIT_BUTTON`,
+`LOGIN_SUCCESS_INDICATOR`, `LOGIN_ERROR_INDICATOR`, `IMPORT_BUTTON`,
+`SINGLE_TRANSACTION_OPTION`, `IMPORT_BUTTON_RESULT`, `POPUP_SPEND_TAB`,
+`POPUP_EARN_TAB`, `POPUP_AMOUNT_SPEND_INPUT`, `POPUP_AMOUNT_EARN_INPUT`,
+`POPUP_ACCOUNT_SPEND_INPUT`/`POPUP_ACCOUNT_SPEND_OPTIONS_CONTAINER`,
+`POPUP_ACCOUNT_EARN_INPUT`/`POPUP_ACCOUNT_EARN_OPTIONS_CONTAINER`,
+`POPUP_DATE_SPEND_INPUT`, `POPUP_DATE_EARN_INPUT`,
+`POPUP_CATEGORY_SPEND_INPUT`, `POPUP_CATEGORY_EARN_INPUT`,
+`POPUP_SAVE_AND_ADD_BUTTON` ("Lưu và thêm" / Save & Add Another), and
+`POPUP_SAVE_AND_CLOSE_BUTTON` ("Lưu" / Save & Close, exact-text match
+scoped to the footer to avoid matching "Lưu và thêm" — confirmed
+2026-08-08 via `scripts/misa_fill_popup_spend_check.py`, popup closes and
+the new row appears in the list). Still placeholder/unconfirmed:
+`LOGIN_2FA_INDICATOR` (2FA never actually triggered) and
+`SUCCESS_INDICATOR`/`ERROR_INDICATOR` (guessed text/class, never matched
+in practice even on confirmed-successful saves — the real success signal
+appears to be the popup closing / list count incrementing, not a toast).
+No other module should contain a hardcoded selector string.
 
 ### 5.2 `client.py`
 - `login(page, username, password) -> bool`
@@ -152,12 +168,40 @@ contain a hardcoded selector string.
     switches to interactive mode: opens headed browser and waits (with a
     timeout) for the user to complete login manually.
   - On success, persists `context.storage_state(path=...)` for reuse next run.
+  - **Implemented and confirmed working.**
+- `click_import_button(page) -> bool`
+  - Clicks Import → Single Transaction option → waits for the popup.
+  - Includes a `page.wait_for_timeout(POPUP_ACCOUNT_SETTLE_MS)` (2.5s) after
+    the popup opens, to let MISA's async default-account load settle before
+    any caller touches the account field (see §9 Failure Handling). **Only
+    covers the initial popup-open case** — switching tabs (Spend↔Earn)
+    re-triggers the same async load and needs an equivalent wait after the
+    tab click too; not yet added to `client.py` (currently only present in
+    the ad-hoc Earn manual test script).
+- `select_account(page, account_name) -> bool`
+  - Clicks the account dropdown, waits for the options container, clicks the
+    matching option. **Currently hardcoded to the Spend selectors** — needs
+    a `container`/tab-aware parameter (or a `classification` argument) to
+    support Earn, mirroring `selectors.account_option_selector()`'s existing
+    `container` parameter.
 - `add_transaction(page, tx: MisaTransaction) -> MisaImportResult`
   - Clicks Import button, waits for popup, fills Amount/Account/Date/Category,
     clicks Save.
+  - **Known gaps (2026-08-07)**: (1) always uses the Spend-tab selectors
+    regardless of `tx`'s classification — no tab click, no Spend/Earn
+    selector switch; (2) fills the category field via `fill()` only, but
+    this does not commit the selection — confirmed the matching dropdown
+    option must also be explicitly clicked afterward, or Save is blocked by
+    validation; (3) uses `POPUP_SAVE_AND_ADD_BUTTON`, which leaves the popup
+    open in "add another" mode instead of closing it — not suitable for a
+    real per-row import loop until the real "Lưu" button is identified.
   - Waits for either a success indicator or an error indicator (both defined
     in `selectors.py`); returns a result object with `success: bool` and
-    `error_message: Optional[str]`.
+    `error_message: Optional[str]`. **Unconfirmed**: neither indicator has
+    ever matched in practice — the more reliable signal observed so far is
+    the background transaction list's total-row counter incrementing, or
+    the popup actually closing (only true for the real "Lưu" button, not
+    `POPUP_SAVE_AND_ADD_BUTTON`).
   - Wrapped in try/except so a single row's exception is caught, converted to
     a failed `MisaImportResult`, and does not propagate (requirements §7
     Resilience).
@@ -201,9 +245,9 @@ python -m app.misa.runner \
 - One-time setup step documented in README/Makefile: `playwright install chromium`.
 
 ### 7.3 Date/time formatting
-- Placeholder using ISO date (`YYYY-MM-DD`) until the real MISA form format is
-  confirmed (requirements §10.2); isolated in `mapper.py` so it's a one-line
-  change once known.
+- **Confirmed (2026-08-07)**: MISA's date field expects `DD/MM/YYYY HH:MM`
+  (not ISO 8601). Implemented in `mapper.py`'s `format_datetime()` via
+  `dt.strftime("%d/%m/%Y %H:%M")`.
 
 ## 8. Security Design
 - Credentials only via environment variables/`.env`; never logged, never
@@ -238,13 +282,31 @@ python -m app.misa.runner \
 Same as requirements §8:
 1. Running the script imports all not-yet-imported Spend/Earn rows.
 2. Imported transactions in MISA show correct amount, account, date, and the
-   fixed `"Bar & Coffee"` category.
+   correct category for the row's classification (`"Bars & Coffee"` for
+   Spend, `"Balance"` for Earn).
 3. Re-running does not re-import previously successful rows.
 4. Console/log output shows per-row success/failure and an end-of-run summary.
 5. No MISA credentials are stored in the repository.
 
 ## 12. Open Items (blocking full implementation)
-1. Real selectors/HTML for MISA login, Import button, and popup form
-   (§5.1) — needed to implement `selectors.py` and `client.py` for real.
-2. Confirmed date/time format expected by the MISA date field (§7.3).
-3. Confirmed presence/absence of 2FA/captcha on MISA login (§5.2).
+1. ~~Real selectors/HTML for MISA login, Import button, and popup form
+   (§5.1).~~ **Mostly resolved (2026-08-07)** — see §5.1 for the confirmed
+   list. Remaining: the real "Lưu" (Save & Close) button selector.
+2. ~~Confirmed date/time format expected by the MISA date field (§7.3).~~
+   **Resolved**: `DD/MM/YYYY HH:MM`.
+3. Confirmed presence/absence of 2FA/captcha on MISA login (§5.2). **Still
+   open** — never actually triggered during testing.
+4. **(New, 2026-08-07, blocking for §5.2/`client.py`)** `add_transaction()`
+   must be extended to: (a) click the Spend or Earn tab per `tx`'s
+   classification and select the matching selector set; (b) re-apply the
+   `POPUP_ACCOUNT_SETTLE_MS` wait after any tab switch, not just after the
+   initial popup open; (c) explicitly click the matching category dropdown
+   option after `fill()`, not rely on `fill()` alone; (d) use the real
+   Save-and-close button once found, instead of
+   `POPUP_SAVE_AND_ADD_BUTTON` (Save & Add Another), which would otherwise
+   leave the popup open after every row in a real import loop.
+5. **(New, 2026-08-07)** No MISA sandbox/test account is available — all
+   manual verification so far has been against the real/production MISA
+   account. One real test Earn transaction (amount 10, account "Helper",
+   category "Balance") was created as a side effect of confirming the Save
+   button behavior and has not yet been cleaned up.

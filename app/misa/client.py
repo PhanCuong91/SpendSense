@@ -21,6 +21,12 @@ LOGIN_TIMEOUT_MS = 15_000
 INTERACTIVE_LOGIN_TIMEOUT_MS = 120_000
 POPUP_TIMEOUT_MS = 10_000
 
+# The popup asynchronously loads/sets a default account shortly after
+# opening; if the account field is touched before this settles, the
+# default overwrites whatever account was selected. Wait this long after
+# the popup opens before interacting with the account field.
+POPUP_ACCOUNT_SETTLE_MS = 2_500
+
 
 def is_logged_in(page: Page) -> bool:
     """Check whether `page` is currently on an authenticated MISA session.
@@ -93,6 +99,48 @@ def save_session(context: BrowserContext, path: Union[str, Path] = DEFAULT_STORA
     context.storage_state(path=str(path))
 
 
+def click_import_button(page: Page, timeout_ms: int = POPUP_TIMEOUT_MS) -> bool:
+    """Open the Add Transaction popup for a single transaction.
+
+    `IMPORT_BUTTON` is an up/down dropdown toggle: clicking it reveals more
+    options, one of which (`SINGLE_TRANSACTION_OPTION`) opens the Add
+    Transaction popup for a single transaction. This clicks both in
+    sequence, then waits for the popup to open (confirmed via
+    `IMPORT_BUTTON_RESULT`).
+
+    Returns True if the popup opened, False otherwise. Never raises.
+    """
+    try:
+        page.click(selectors.IMPORT_BUTTON)
+        page.click(selectors.SINGLE_TRANSACTION_OPTION)
+        page.wait_for_selector(selectors.IMPORT_BUTTON_RESULT, timeout=timeout_ms)
+        page.wait_for_timeout(POPUP_ACCOUNT_SETTLE_MS)
+        return True
+    except Exception as exc:
+        logger.error("Clicking Import button failed: %s", exc)
+        return False
+
+
+def select_account(page: Page, account_name: str, timeout_ms: int = POPUP_TIMEOUT_MS) -> bool:
+    """Select `account_name` in the popup's Account dropdown.
+
+    `POPUP_ACCOUNT_SPEND_INPUT` is a dropdown button, not a fillable field:
+    this clicks it to open the options list, waits for the list to appear,
+    then clicks the option whose text matches `account_name` (e.g.
+    "PayLah", "DBS" — comes from the row's data, not a fixed selector).
+
+    Returns True if the option was clicked, False otherwise. Never raises.
+    """
+    try:
+        page.click(selectors.POPUP_ACCOUNT_SPEND_INPUT)
+        page.wait_for_selector(selectors.POPUP_ACCOUNT_SPEND_OPTIONS_CONTAINER, timeout=timeout_ms)
+        page.click(selectors.account_option_selector(account_name))
+        return True
+    except Exception as exc:
+        logger.error("Selecting account %r failed: %s", account_name, exc)
+        return False
+
+
 def add_transaction(page: Page, tx: MisaTransaction) -> MisaImportResult:
     """Add one transaction to MISA via the Import popup flow.
 
@@ -103,15 +151,20 @@ def add_transaction(page: Page, tx: MisaTransaction) -> MisaImportResult:
     row's failure does not stop the caller's loop over other rows.
     """
     try:
-        page.click(selectors.IMPORT_BUTTON)
-        page.wait_for_selector(selectors.POPUP_AMOUNT_INPUT, timeout=POPUP_TIMEOUT_MS)
+        if not click_import_button(page):
+            return MisaImportResult(success=False, error_message="Import popup did not open")
 
-        page.fill(selectors.POPUP_AMOUNT_INPUT, str(tx.amount))
-        page.fill(selectors.POPUP_ACCOUNT_INPUT, tx.account)
-        page.fill(selectors.POPUP_DATE_INPUT, tx.datetime)
-        page.fill(selectors.POPUP_CATEGORY_INPUT, tx.category)
+        page.wait_for_selector(selectors.POPUP_AMOUNT_SPEND_INPUT, timeout=POPUP_TIMEOUT_MS)
 
-        page.click(selectors.POPUP_SAVE_BUTTON)
+        page.fill(selectors.POPUP_AMOUNT_SPEND_INPUT, str(tx.amount))
+        if not select_account(page, tx.account):
+            return MisaImportResult(
+                success=False, error_message=f"Could not select account {tx.account!r}"
+            )
+        page.fill(selectors.POPUP_DATE_SPEND_INPUT, tx.datetime)
+        page.fill(selectors.POPUP_CATEGORY_SPEND_INPUT, tx.category)
+
+        page.click(selectors.POPUP_SAVE_AND_ADD_BUTTON)
 
         success_locator = page.locator(selectors.SUCCESS_INDICATOR)
         error_locator = page.locator(selectors.ERROR_INDICATOR)

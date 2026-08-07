@@ -24,8 +24,8 @@ summary.
 |---|---|---|
 | Amount     | `parsed_transaction_candidate.amount` | direct copy |
 | Account    | `inferred_sender` or `inferred_receiver` | `inferred_sender` when the row resolves to **Spend** (`inferred_sender != "Other"` and `inferred_receiver == "Other"`); `inferred_receiver` when it resolves to **Earn** (`inferred_sender == "Other"` and `inferred_receiver != "Other"`) |
-| Date/time  | `datetime_sgt` | direct copy, converted to whatever date/time format the MISA form expects |
-| Category   | fixed default | `"Bar & Coffee"` for every imported row (no per-row derivation) |
+| Date/time  | `datetime_sgt` | direct copy, converted to `DD/MM/YYYY HH:MM` (confirmed MISA date field format, see §10.2) |
+| Category   | fixed default, **per classification** | `"Bars & Coffee"` for Spend rows; `"Balance"` for Earn rows (confirmed 2026-08-07: Spend and Earn have distinct/non-overlapping category lists in MISA, so a single fixed category cannot serve both — see `app/misa/mapper.py` `CATEGORY`/`EARN_CATEGORY`) |
 
 ## 3. MISA Web Automation
 
@@ -57,12 +57,22 @@ summary.
 ### 3.4 Per-transaction flow
 For each row to import:
 1. Click the "Import"/"Add transaction" button.
-2. Wait for the popup form to appear.
-3. Fill Amount, Account, Date, Category fields.
-4. Click Save.
-5. Verify the popup closed / a success indicator appeared (or detect an error
+2. Wait for the popup form to appear (an async default-account load also
+   starts here and must be allowed to settle, see §10.4).
+3. Click the Spend or Earn tab per the row's classification (switching tabs
+   re-triggers the same async default-account load — must settle again,
+   see §10.4).
+4. Fill Amount, Date fields; select Account and Category from their
+   respective dropdowns (typing text alone only filters the dropdown — the
+   matching option must be explicitly clicked to commit the selection, see
+   §10.5).
+5. Click the Save-and-close button (**not** confirmed yet — MISA's popup has
+   two visually similar Save buttons, "Lưu" (Save & Close) and "Lưu và thêm"
+   (Save & Add Another); only the latter's selector is confirmed so far, see
+   §10.6).
+6. Verify the popup closed / a success indicator appeared (or detect an error
    message/validation failure).
-6. Record success or failure for that row.
+7. Record success or failure for that row.
 
 ## 4. Duplicate Import Prevention
 - Maintain a local state file (e.g. JSON, keyed by `parsed_transaction_candidate.id`)
@@ -103,7 +113,7 @@ For each row to import:
 1. Running the script imports all not-yet-imported Spend/Earn rows from
    `txdb.sqlite3` into MISA via the web UI.
 2. Each imported transaction in MISA shows the correct amount, account, date, and
-   the fixed category `"Bar & Coffee"`.
+   the fixed category `"Bars & Coffee"`.
 3. Re-running the script does not re-import previously successful rows.
 4. Console/log output clearly shows per-row success/failure and an end-of-run
    summary.
@@ -149,8 +159,36 @@ Tests should follow the existing convention in `tests/` (pytest, e.g.
    duplicates in MISA.
 
 ## 10. Open Items Requiring Follow-Up
-1. Obtain real selectors/HTML for the MISA login page, Import button, and popup
-   form (see §3.3) — required before the automation logic can be finalized.
-2. Confirm date/time format expected by the MISA date field.
+1. ~~Obtain real selectors/HTML for the MISA login page, Import button, and
+   popup form (see §3.3).~~ **Mostly resolved (2026-08-07)** — login,
+   Import button, both tabs, and all Spend/Earn field selectors are
+   confirmed working end-to-end via manual scripts. Remaining gap: the
+   real "Lưu" (Save & Close) button selector is still unknown (see §10.6).
+2. ~~Confirm date/time format expected by the MISA date field.~~ **Resolved
+   (2026-08-07)**: `DD/MM/YYYY HH:MM`.
 3. Confirm whether 2FA/captcha is present on MISA login (affects headless vs
-   interactive login flow).
+   interactive login flow). **Still open** — 2FA has never actually been
+   triggered during testing so far; the indicator selector remains a
+   guess.
+4. **(New, 2026-08-07)** Async default-account bug: MISA's popup
+   asynchronously loads/overwrites a default account ~1-2.5s after the
+   popup opens AND again after switching tabs. Any account selection made
+   before this settles is silently reverted. Mitigation (a fixed
+   `wait_for_timeout`) is implemented for the popup-open case in
+   `client.py`; the tab-switch case is only handled in the manual Earn
+   test script so far, not in `client.py`/`add_transaction()`.
+5. **(New, 2026-08-07)** Category dropdown selection requires an explicit
+   click on the matching option after typing — `fill()` alone only filters
+   the list and does not commit the selection, so Save is blocked by
+   validation if only `fill()` is used. Currently only implemented in the
+   manual Earn test script, not yet in `client.py`.
+6. ~~MISA's popup has two Save buttons — "Lưu" (Save & Close) and "Lưu và
+   thêm" (Save & Add Another).~~ **Resolved (2026-08-08)** — both are now
+   confirmed: `POPUP_SAVE_AND_ADD_BUTTON` ("Lưu và thêm") and
+   `POPUP_SAVE_AND_CLOSE_BUTTON` ("Lưu", exact-text match scoped to the
+   footer). Verified live via `scripts/misa_fill_popup_spend_check.py`:
+   clicking `POPUP_SAVE_AND_CLOSE_BUTTON` closes the popup and the new row
+   appears in the transaction list, unlike `POPUP_SAVE_AND_ADD_BUTTON`
+   which leaves it open. `client.py`'s `add_transaction()` still needs to
+   be switched over to use `POPUP_SAVE_AND_CLOSE_BUTTON` (currently uses
+   the Add-Another one).

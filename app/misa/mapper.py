@@ -12,17 +12,17 @@ from app.db.models.parsed_candidate import ParsedTransactionCandidate
 from app.misa.models import MisaTransaction
 from app.misa.query import Classification
 
-CATEGORY = "Bar & Coffee"
+CATEGORY = "Bars & Coffee"
+EARN_CATEGORY = "Balance"
 
 
 def format_datetime(dt: datetime) -> str:
     """Format a candidate's `datetime_sgt` for MISA's date field.
 
-    Placeholder ISO 8601 format pending confirmation of the real format
-    MISA's form expects (requirements.md §10.2 / design.md §7.3). Isolated
-    here so it is a one-line change once that is confirmed.
+    MISA's Add Transaction popup expects `DD/MM/YYYY HH:MM` (confirmed via
+    manual UI inspection; requirements.md §10.2 / design.md §7.3).
     """
-    return dt.isoformat()
+    return dt.strftime("%d/%m/%Y %H:%M")
 
 
 def to_misa_transaction(
@@ -34,12 +34,17 @@ def to_misa_transaction(
       - amount: direct copy of `row.amount`.
       - account: `inferred_sender` for Spend, `inferred_receiver` for Earn.
       - datetime: `row.datetime_sgt`, formatted via `format_datetime()`.
-      - category: fixed constant `"Bar & Coffee"`.
+      - category: fixed constant `"Bars & Coffee"` for Spend, `"Balance"`
+        for Earn (Spend and Earn have distinct category lists in MISA;
+        `CATEGORY` is invalid for Earn rows and will be rejected by MISA's
+        own validation).
     """
     if classification == "Spend":
         account = row.inferred_sender
+        category = CATEGORY
     elif classification == "Earn":
         account = row.inferred_receiver
+        category = EARN_CATEGORY
     else:
         raise ValueError(f"Unsupported classification: {classification!r}")
 
@@ -51,5 +56,5 @@ def to_misa_transaction(
         amount=amount,
         account=account,
         datetime=format_datetime(row.datetime_sgt),
-        category=CATEGORY,
+        category=category,
     )
