@@ -1,5 +1,7 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
+
+Classification = Literal["Spend", "Earn"]
 
 
 @dataclass
@@ -14,6 +16,7 @@ class MisaTransaction:
     account: str
     datetime: str
     category: str
+    classification: Classification
 
 
 @dataclass

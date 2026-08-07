@@ -55,10 +55,16 @@ class _Row:
         self.id = id
 
 
-def _planned_row(row_id, amount, account="Trust"):
+def _planned_row(row_id, amount, account="Trust", classification="Spend"):
     row = _Row(id=row_id)
-    tx = MisaTransaction(amount=amount, account=account, datetime="08/08/2026 00:00", category="Bars & Coffee")
-    return row, "Spend", tx
+    tx = MisaTransaction(
+        amount=amount,
+        account=account,
+        datetime="08/08/2026 00:00",
+        category="Bars & Coffee" if classification == "Spend" else "Balance",
+        classification=classification,
+    )
+    return row, classification, tx
 
 
 class _FakePage:
@@ -187,6 +193,24 @@ def test_summary_logged_when_credentials_missing(monkeypatch, tmp_path, log_reco
 # ---------------------------------------------------------------------------
 # Item 3: .env support for MISA_USERNAME/MISA_PASSWORD + secrets never logged
 # ---------------------------------------------------------------------------
+
+
+def test_dry_run_limit_caps_planned_rows(log_records, monkeypatch):
+    """--limit should cap the number of rows shown/considered for import."""
+    row1, _, tx1 = _planned_row("row-1", 1.0)
+    row2, _, tx2 = _planned_row("row-2", 2.0)
+    row3, _, tx3 = _planned_row("row-3", 3.0)
+    planned = [(row1, "Spend", tx1), (row2, "Spend", tx2), (row3, "Spend", tx3)]
+
+    monkeypatch.setattr(runner, "_plan_rows", lambda *args, **kwargs: (planned, 3, 0))
+
+    args = runner.build_arg_parser().parse_args(["--dry-run", "--limit", "2"])
+    exit_code = runner.run(args)
+
+    assert exit_code == 0
+    messages = _messages(log_records)
+    assert any("Dry run: 2 row(s) would be imported" in m for m in messages)
+    assert sum(1 for m in messages if "[would-import]" in m) == 2
 
 
 def test_main_loads_dotenv_from_env_misa_file_not_main_env(monkeypatch):

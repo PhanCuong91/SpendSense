@@ -86,9 +86,29 @@ def test_login_failure_unknown_username(page):
 # --- add_transaction() success/failure detection --------------------------
 
 
-def test_add_transaction_success(page):
+def test_add_transaction_success_spend(page):
     _goto_transactions(page)
-    tx = MisaTransaction(amount=10, account="Helper", datetime="08/08/2026 10:00", category="Bars & Coffee")
+    tx = MisaTransaction(
+        amount=10,
+        account="Helper",
+        datetime="08/08/2026 10:00",
+        category="Bars & Coffee",
+        classification="Spend",
+    )
+    result = client.add_transaction(page, tx)
+    assert result.success is True
+    assert result.error_message is None
+
+
+def test_add_transaction_success_earn(page):
+    _goto_transactions(page)
+    tx = MisaTransaction(
+        amount=10,
+        account="Helper",
+        datetime="08/08/2026 10:00",
+        category="Balance",
+        classification="Earn",
+    )
     result = client.add_transaction(page, tx)
     assert result.success is True
     assert result.error_message is None
@@ -97,7 +117,11 @@ def test_add_transaction_success(page):
 def test_add_transaction_failure_bad_account(page):
     _goto_transactions(page)
     tx = MisaTransaction(
-        amount=10, account="No Such Account", datetime="08/08/2026 10:00", category="Bars & Coffee"
+        amount=10,
+        account="No Such Account",
+        datetime="08/08/2026 10:00",
+        category="Bars & Coffee",
+        classification="Spend",
     )
     result = client.add_transaction(page, tx)
     assert result.success is False
@@ -110,12 +134,22 @@ def test_add_transaction_one_failure_does_not_stop_others(page):
     _goto_transactions(page)
 
     bad_tx = MisaTransaction(
-        amount=10, account="No Such Account", datetime="08/08/2026 10:00", category="Bars & Coffee"
+        amount=10,
+        account="No Such Account",
+        datetime="08/08/2026 10:00",
+        category="Bars & Coffee",
+        classification="Spend",
     )
     bad_result = client.add_transaction(page, bad_tx)
     assert bad_result.success is False
 
-    good_tx = MisaTransaction(amount=20, account="Cash", datetime="08/08/2026 10:00", category="Bars & Coffee")
+    good_tx = MisaTransaction(
+        amount=20,
+        account="Cash",
+        datetime="08/08/2026 10:00",
+        category="Bars & Coffee",
+        classification="Spend",
+    )
     good_result = client.add_transaction(page, good_tx)
     assert good_result.success is True
 
@@ -127,7 +161,13 @@ def test_add_transaction_exception_is_caught_not_raised(page, monkeypatch):
     monkeypatch.setattr(selectors, "IMPORT_BUTTON", "#this-selector-does-not-exist")
     _goto_transactions(page)
 
-    tx = MisaTransaction(amount=10, account="Helper", datetime="08/08/2026 10:00", category="Bars & Coffee")
+    tx = MisaTransaction(
+        amount=10,
+        account="Helper",
+        datetime="08/08/2026 10:00",
+        category="Bars & Coffee",
+        classification="Spend",
+    )
     result = client.add_transaction(page, tx)
 
     assert result.success is False

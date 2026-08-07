@@ -4,7 +4,7 @@ See ai/update_misa_implementation/update_misa_requirements.md §2.1 for the
 classification rules implemented here.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from typing import List, Literal, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -48,7 +48,10 @@ def get_candidates(
     if start_date is not None:
         query = query.filter(ParsedTransactionCandidate.datetime_sgt >= start_date)
     if end_date is not None:
-        query = query.filter(ParsedTransactionCandidate.datetime_sgt <= end_date)
+        # SQLite stores datetimes with a time component; comparing against a
+        # bare date string would miss rows at midnight on the end date. Use
+        # a strict-less-than the following day to include the whole day.
+        query = query.filter(ParsedTransactionCandidate.datetime_sgt < end_date + timedelta(days=1))
     return query.all()
 
 

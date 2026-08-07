@@ -123,7 +123,7 @@
                               <div> <!-- nth-child(3): date -->
                                 <div>
                                   <div>
-                                    <input type="text" data-fixture-field="spend-date" />
+                                    <input type="text" placeholder="dd/mm/yyyy hh:mm" data-fixture-field="spend-date" />
                                   </div>
                                 </div>
                               </div>
@@ -134,6 +134,11 @@
                                   <div>
                                     <div class="input-container">
                                       <input type="text" data-fixture-field="spend-category" />
+                                    </div>
+                                    <div class="dropdown-container" hidden>
+                                      <div data-fixture-category-options="spend">
+                                        <div>Bars &amp; Coffee</div>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
@@ -191,7 +196,7 @@
                               <div> <!-- nth-child(3): date -->
                                 <div>
                                   <div>
-                                    <input type="text" data-fixture-field="earn-date" />
+                                    <input type="text" placeholder="dd/mm/yyyy hh:mm" data-fixture-field="earn-date" />
                                   </div>
                                 </div>
                               </div>
@@ -202,6 +207,11 @@
                                   <div>
                                     <div>
                                       <input type="text" data-fixture-field="earn-category" />
+                                    </div>
+                                    <div class="dropdown-container" hidden>
+                                      <div data-fixture-category-options="earn">
+                                        <div>Balance</div>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
@@ -278,14 +288,31 @@
       });
     });
 
+    document.querySelectorAll('[data-fixture-field$="-category"]').forEach((input) => {
+      input.addEventListener('input', () => {
+        input.closest('.p-t-8').querySelector('.dropdown-container').hidden = false;
+      });
+    });
+    document.querySelectorAll('[data-fixture-category-options] div').forEach((opt) => {
+      opt.addEventListener('click', () => {
+        const input = opt.closest('.p-t-8').querySelector('input');
+        input.value = opt.textContent;
+        input.setAttribute('data-fixture-category-selected', 'true');
+        opt.closest('.dropdown-container').hidden = true;
+      });
+    });
+
     document.querySelectorAll('[data-fixture-save]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const requiredSelectors = ['spend-amount', 'spend-account'];
-        const amount = document.querySelector('[data-fixture-field="spend-amount"]').value
-          || document.querySelector('[data-fixture-field="earn-amount"]').value;
+        const activePanel = document.querySelector('[data-fixture-panel="spend"]').hidden
+          ? 'earn' : 'spend';
+        const amount = document.querySelector(`[data-fixture-field="${activePanel}-amount"]`).value;
+        const account = document.querySelector(`[data-fixture-field="${activePanel}-account"]`).value;
+        const categoryInput = document.querySelector(`[data-fixture-field="${activePanel}-category"]`);
+        const categorySelected = categoryInput.getAttribute('data-fixture-category-selected') === 'true';
         const errorEl = document.querySelector('[data-fixture-error-indicator]');
         const successEl = document.querySelector('[data-fixture-success-indicator]');
-        if (!amount) {
+        if (!amount || !account || !categorySelected) {
           errorEl.hidden = false;
           successEl.hidden = true;
           return;

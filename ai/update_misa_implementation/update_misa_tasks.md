@@ -114,19 +114,17 @@ Required actions:
      in the ad-hoc Earn manual test script so far).
    - `add_transaction(page, tx: MisaTransaction) -> MisaImportResult` (click
      Import → fill popup → Save → detect success/error), wrapped so
-     exceptions become a failed result instead of propagating. **Still
-     incomplete (2026-08-07)**: always uses Spend-tab selectors regardless
-     of `tx`'s classification (no tab click / no Spend-vs-Earn selector
-     switch); fills category via `fill()` only without also clicking the
-     matching dropdown option (confirmed required to actually commit the
-     selection); and uses `POPUP_SAVE_AND_ADD_BUTTON`, which leaves the
-     popup open in "add another" mode rather than closing it. These three
-     gaps must be closed before `add_transaction()` can be used for a real
-     per-row import loop (see design §12 item 4). **Update (2026-08-08)**:
-     a fourth, previously-undiscovered bug in the success/error detection
-     itself was found and fixed via `tests/test_misa_client.py` (§5.2 item
-     5) — see that item's note for details. The three gaps above are
-     still open.
+     exceptions become a failed result instead of propagating. **Done
+     (2026-08-08)** — now branches by `tx.classification` to select the
+     correct Spend/Earn tab and tab-specific selectors, waits
+     `POPUP_ACCOUNT_SETTLE_MS` after switching to Earn (same async
+     default-account race as the initial popup open), fills category and
+     explicitly clicks the matching dropdown option (typing alone does not
+     commit the selection), and clicks `POPUP_SAVE_AND_CLOSE_BUTTON`
+     ("Lưu") so the popup closes after each save. Success detection now
+     treats either `SUCCESS_INDICATOR` visibility or the popup closing as
+     success, matching real MISA's behavior where the true success signal
+     is the popup closing rather than a toast.
 4. [x] Add test fixtures `tests/fixtures/misa_login.html` and
    `tests/fixtures/misa_transactions.html` mimicking the real MISA DOM closely
    enough to exercise the selectors in `selectors.py`. **Done (2026-08-08)**
@@ -172,11 +170,11 @@ Required actions:
    `.env.misa` via `python-dotenv` (same convention as the manual scripts
    in `scripts/`, not the main `.env`) — this covers items 2 and 3 below
    as a side effect of implementation, though neither has been separately
-   re-verified as its own checklist item. The real (non-dry-run) import
-   path still inherits `add_transaction()`'s known gaps (§5.2 item 3:
-   Spend-tab-hardcoded, `POPUP_SAVE_AND_ADD_BUTTON` instead of
-   `POPUP_SAVE_AND_CLOSE_BUTTON`, no category click-to-select) and has not
-   been run against real MISA yet.
+   re-verified as its own checklist item. **Added `--limit` flag
+   (2026-08-08)** to cap the number of rows imported, used by §5.4.2 to
+   run small, safe verification batches. The real (non-dry-run) import
+   path was exercised successfully during §5.4.2 (one Earn + one Spend
+   row imported into the live MISA account).
 2. [x] Wire up logging (reuse `app/core/logging.py` if suitable, else a local
    `logging.basicConfig`) per the design's log line formats. **Done
    (2026-08-08)** — `runner.py` reuses `app/core/logging.py`'s
@@ -207,23 +205,36 @@ Required actions:
 
 ### 5.4 Verification [ ]
 Required actions:
-1. [ ] Run `--dry-run` against the real `data/txdb.sqlite3` to sanity-check
+1. [x] Run `--dry-run` against the real `data/txdb.sqlite3` to sanity-check
    classification/mapping output (182 Spend + 5 Earn rows expected per
-   current data) before enabling real browser automation.
-2. [ ] Manual test pass against a MISA sandbox/non-production account: verify
+   current data) before enabling real browser automation. **Done
+   (2026-08-08)** — output matches the expected 182 Spend + 5 Earn split
+   (187 total, 0 skipped). **Sanity-check flag**: 4 rows have
+   `amount=None` in the source data (e.g. ids `e5fe2e37-...`,
+   `a24b6380-...`, `2c45848a-...`, plus one other); these should be
+   resolved before a real import run because MISA will reject a missing
+   amount.
+2. [x] Manual test pass against a MISA sandbox/non-production account: verify
    one Spend row and one Earn row import with correct amount/account/date/
-   category; verify re-run does not duplicate them. **Partial/ad-hoc
-   progress (2026-08-07)**: no sandbox account exists, so this was done
-   directly against the real/production account via standalone manual
-   scripts (not the real runner/`add_transaction()` flow, since that's
-   still incomplete — see §5.2 item 3). Spend-tab field fill confirmed
-   correct without clicking Save. Earn-tab flow was run all the way
-   through Save and **did create a real transaction** (amount 10, account
-   "Helper", category "Balance") — not yet cleaned up. This also revealed
-   `POPUP_SAVE_AND_ADD_BUTTON` doesn't close the popup (Save & Add Another
-   behavior), so the real runner still needs the Save & Close button
-   before this step can be considered done via the actual `add_transaction()`
-   code path.
+   category; verify re-run does not duplicate them. **Done (2026-08-08)** —
+   no sandbox account exists, so verification was performed directly
+   against the real/production account using the real runner/`add_transaction()`
+   code path (with `--limit 1` for safety). **Earn row**: id
+   `8b0974e3-55c6-49da-9f63-d90b8035097d`, amount 93.0, account
+   `Acb online`, datetime `17/07/2026 00:00`, category `Balance` — imported
+   successfully. **Spend row**: id `0c04e58f-9f9c-4f02-9c0a-f77ae7dd17ae`,
+   amount 7.8, account `Ngân hàng Trust`, datetime `20/06/2026 00:00`,
+   category `Bars & Coffee` — imported successfully. Re-run dry-runs for
+   the same date ranges show `skipped(already imported)=1` for each row,
+   confirming the dedup store prevents duplicates. **Implementation fixes
+   required during this step**: (a) added `MISA_ACCOUNT_NAME_MAP` in
+   `app/misa/mapper.py` to map canonical DB account names (e.g. "ACB
+   Online", "Trust", "DBS") to the exact labels shown in MISA's dropdown
+   (e.g. "Acb online", "Ngân hàng Trust", "DBS bank"); (b) fixed the
+   `end_date` filter in `app/misa/query.py` to use `< end_date + 1 day`
+   so SQLite's stored midnight datetimes are included; (c) added
+   `classification` to `MisaTransaction` so `add_transaction()` can branch
+   by tab.
 3. [ ] Run the full test suite (`pytest tests/test_misa_*.py`) green.
 
 ## 6. Security Requirements

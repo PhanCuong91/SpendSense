@@ -61,6 +61,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--headed", action="store_true", help="Run with a visible (non-headless) browser")
     parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Import at most this many rows (useful for small manual verification runs)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Classify/map rows and print what would be imported, without launching a browser "
@@ -152,6 +158,7 @@ def _run_import(planned: List[PlannedRow], considered: int, skipped: int, dedup_
                             "imported_at": datetime.now(timezone.utc).isoformat(),
                             "amount": tx.amount,
                             "account": tx.account,
+                            "datetime": tx.datetime,
                             "classification": classification,
                         },
                     )
@@ -188,6 +195,9 @@ def _run_import(planned: List[PlannedRow], considered: int, skipped: int, dedup_
 def run(args: argparse.Namespace) -> int:
     dedup_store = DedupStore(path=args.state_file)
     planned, considered, skipped = _plan_rows(dedup_store, args.start_date, args.end_date)
+
+    if args.limit is not None and args.limit >= 0:
+        planned = planned[: args.limit]
 
     if args.dry_run:
         return _run_dry(planned, considered, skipped)

@@ -15,6 +15,24 @@ from app.misa.query import Classification
 CATEGORY = "Bars & Coffee"
 EARN_CATEGORY = "Balance"
 
+# Map canonical account names produced by the parser/query layer to the exact
+# account names displayed in MISA's dropdown (case and diacritics matter there).
+MISA_ACCOUNT_NAME_MAP = {
+    "ACB": "ACB",
+    "ACB Online": "Acb online",
+    "DBS": "DBS bank",
+    "PayLah": "Paylah",
+    "Trust": "Ngân hàng Trust",
+}
+
+
+def to_misa_account_name(canonical_account: str) -> str:
+    """Return the MISA account label for a canonical account name.
+
+    Falls back to the canonical name unchanged when no mapping exists.
+    """
+    return MISA_ACCOUNT_NAME_MAP.get(canonical_account, canonical_account)
+
 
 def format_datetime(dt: datetime) -> str:
     """Format a candidate's `datetime_sgt` for MISA's date field.
@@ -40,10 +58,10 @@ def to_misa_transaction(
         own validation).
     """
     if classification == "Spend":
-        account = row.inferred_sender
+        account = to_misa_account_name(row.inferred_sender)
         category = CATEGORY
     elif classification == "Earn":
-        account = row.inferred_receiver
+        account = to_misa_account_name(row.inferred_receiver)
         category = EARN_CATEGORY
     else:
         raise ValueError(f"Unsupported classification: {classification!r}")
@@ -57,4 +75,5 @@ def to_misa_transaction(
         account=account,
         datetime=format_datetime(row.datetime_sgt),
         category=category,
+        classification=classification,
     )

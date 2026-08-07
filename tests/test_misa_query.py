@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
-from app.misa.mapper import CATEGORY, EARN_CATEGORY, to_misa_transaction
+from app.misa.mapper import CATEGORY, EARN_CATEGORY, to_misa_transaction, to_misa_account_name
 from app.misa.query import classify
 
 
@@ -47,9 +47,10 @@ def test_maps_spend_row_account_from_sender():
     tx = to_misa_transaction(row, "Spend")
 
     assert tx.amount == 12.50
-    assert tx.account == "PayLah"
+    assert tx.account == to_misa_account_name("PayLah")
     assert tx.datetime == dt.strftime("%d/%m/%Y %H:%M")
     assert tx.category == CATEGORY
+    assert tx.classification == "Spend"
 
 
 def test_maps_earn_row_account_from_receiver():
@@ -59,6 +60,7 @@ def test_maps_earn_row_account_from_receiver():
     tx = to_misa_transaction(row, "Earn")
 
     assert tx.amount == 100.00
-    assert tx.account == "DBS"
+    assert tx.account == to_misa_account_name("DBS")
     assert tx.datetime == dt.strftime("%d/%m/%Y %H:%M")
     assert tx.category == EARN_CATEGORY
+    assert tx.classification == "Earn"

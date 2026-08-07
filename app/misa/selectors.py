@@ -83,7 +83,7 @@ def account_option_selector(account_name: str, container: str = POPUP_ACCOUNT_SP
     return f'{container} >> text="{account_name}"'
 
 
-POPUP_DATE_SPEND_INPUT = "#app > div.modals-container > div > div.vfm__container.vfm--absolute.vfm--inset.vfm--outline-none.modal-container.null > div > div.modal__content.flex-column.flex1 > div > div > div.list-tab > div > div > div > div > div:nth-child(1) > div.left > div:nth-child(3) > div > div input"
+POPUP_DATE_SPEND_INPUT = "#app > div.modals-container > div > div.vfm__container.vfm--absolute.vfm--inset.vfm--outline-none.modal-container.null > div > div.modal__content.flex-column.flex1 > div > div > div.list-tab > div > div > div > div > div:nth-child(1) > div.left > div:nth-child(3) > div > div > div > input"
 
 # Dummy placeholder guessed from the Spend tab's structure - unconfirmed.
 POPUP_DATE_EARN_INPUT = "#app > div.modals-container > div > div.vfm__container.vfm--absolute.vfm--inset.vfm--outline-none.modal-container.null > div > div.modal__content.flex-column.flex1 > div > div > div.list-tab > div:nth-child(2) > div > div > div > div > div.left > div:nth-child(3) > div > div input"
