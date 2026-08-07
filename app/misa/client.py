@@ -59,6 +59,35 @@ def _wait_for_login_outcome(page: Page, timeout_ms: int) -> bool:
     return False
 
 
+def _wait_for_save_outcome(page: Page, timeout_ms: int) -> Optional[bool]:
+    """Poll for either SUCCESS_INDICATOR or ERROR_INDICATOR, whichever
+    appears first, up to `timeout_ms`.
+
+    Returns True on success, False on error, or None if neither ever
+    appeared (timeout). Deliberately does NOT use a single combined
+    `wait_for_selector(f"{a}, {b}")` call: Playwright's `text=` engine
+    consumes an unescaped comma as part of its own search text rather than
+    treating it as a selector-list separator, so a combined selector built
+    from an unquoted `text=...` indicator silently never matches even
+    when the indicator is genuinely visible (reproduced via
+    tests/test_misa_client.py against tests/fixtures/misa_transactions.html).
+    Polling each locator individually (same pattern as
+    `_wait_for_login_outcome`) avoids this pitfall.
+    """
+    success_locator = page.locator(selectors.SUCCESS_INDICATOR)
+    error_locator = page.locator(selectors.ERROR_INDICATOR)
+    poll_interval_ms = 250
+    elapsed_ms = 0
+    while elapsed_ms <= timeout_ms:
+        if success_locator.is_visible():
+            return True
+        if error_locator.is_visible():
+            return False
+        page.wait_for_timeout(poll_interval_ms)
+        elapsed_ms += poll_interval_ms
+    return None
+
+
 def login(page: Page, username: str, password: str) -> bool:
     """Log into MISA Money Keeper.
 
@@ -166,17 +195,12 @@ def add_transaction(page: Page, tx: MisaTransaction) -> MisaImportResult:
 
         page.click(selectors.POPUP_SAVE_AND_ADD_BUTTON)
 
-        success_locator = page.locator(selectors.SUCCESS_INDICATOR)
-        error_locator = page.locator(selectors.ERROR_INDICATOR)
-        page.wait_for_selector(
-            f"{selectors.SUCCESS_INDICATOR}, {selectors.ERROR_INDICATOR}",
-            timeout=POPUP_TIMEOUT_MS,
-        )
-
-        if error_locator.is_visible():
-            return MisaImportResult(success=False, error_message=error_locator.inner_text())
-        if success_locator.is_visible():
+        outcome = _wait_for_save_outcome(page, POPUP_TIMEOUT_MS)
+        if outcome is True:
             return MisaImportResult(success=True)
+        if outcome is False:
+            error_message = page.locator(selectors.ERROR_INDICATOR).inner_text()
+            return MisaImportResult(success=False, error_message=error_message)
         return MisaImportResult(success=False, error_message="No success/error indicator appeared")
     except Exception as exc:
         return MisaImportResult(success=False, error_message=str(exc))

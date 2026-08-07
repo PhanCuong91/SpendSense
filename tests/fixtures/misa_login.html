@@ -68,6 +68,28 @@
     if (document.body.classList.contains("logged-in")) {
       document.getElementById("app-container").hidden = false;
     }
+
+    // Test-only submit handler: exercises client.login()'s real fill/click
+    // flow end-to-end (tests/test_misa_client.py) instead of only the
+    // static body-class toggles above. Any credentials other than the
+    // fixture's known-good pair are treated as a failed login, matching
+    // real MISA's "Sai tên đăng nhập hoặc mật khẩu" behavior.
+    const FIXTURE_VALID_USERNAME = "fixture_user";
+    const FIXTURE_VALID_PASSWORD = "fixture_pass";
+    document.querySelector("button[type=submit]").addEventListener("click", (event) => {
+      event.preventDefault();
+      const username = document.querySelector("#username input").value;
+      const password = document.querySelector("#password input").value;
+      const errorEl = document.querySelector("[data-fixture-error]");
+      const appContainer = document.getElementById("app-container");
+      if (username === FIXTURE_VALID_USERNAME && password === FIXTURE_VALID_PASSWORD) {
+        errorEl.style.display = "none";
+        appContainer.hidden = false;
+      } else {
+        errorEl.style.display = "block";
+        appContainer.hidden = true;
+      }
+    });
   </script>
 </body>
 </html>
