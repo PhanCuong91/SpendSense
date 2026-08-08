@@ -13,7 +13,7 @@ with duplicate-import protection, per-row logging, and a test suite.
 ## 2. Scope
 - Reading and classifying rows from `parsed_transaction_candidate`.
 - Browser automation (login, Import button, popup form, save) via Playwright.
-- Local dedup state tracking across runs.
+- **Database-backed** dedup state tracking across runs (via `misa_import_state` table).
 - Logging (per-row + summary).
 - Unit tests and mocked-UI browser tests.
 - Out of scope: modifying the FastAPI app, the classifier/correlator pipeline,
@@ -24,32 +24,43 @@ with duplicate-import protection, per-row logging, and a test suite.
 ### 3.1 Components
 - **DB reader** — SQLAlchemy session against the existing `Base`/`SessionLocal`
   (`app/db/session.py`), reusing the existing `ParsedTransactionCandidate` model.
-  No schema changes required.
+  Adds a new `MisaImportState` table for import tracking.
 - **Classifier/mapper** — pure Python, no I/O; turns a candidate row into a
   `MisaTransaction` (amount, account, datetime, category) or `None` if excluded.
-- **Dedup store** — local JSON file mapping candidate `id` → import result
-  metadata (status, timestamp).
+- **Dedup store** — SQLAlchemy-backed table `misa_import_state` mapping
+  `parsed_candidate_id` → import result metadata (status, timestamp).
 - **MISA client** — Playwright wrapper encapsulating login, session reuse,
   navigation, and the "click Import → fill popup → Save" flow.
-- **Runner (CLI entrypoint)** — orchestrates: load dedup store → query DB →
-  classify/map → filter already-imported → for each row, call MISA client →
-  update dedup store → log → print summary.
+- **Runner (CLI entrypoint)** — orchestrates: query DB → classify/map → filter
+  already-imported (using `misa_import_state`) → for each row, call MISA client →
+  update `misa_import_state` on success → log → print summary.
+
+### 3.1.1 Playwright runtime installation
+Playwright and its Chromium browser are **not** installed inside the Docker image.
+They are installed at runtime on the dedicated EC2 instance that runs the MISA
+import (see deployment_requirements.md §5.2). This keeps the ECR image small,
+speeds up ECS task startup, and avoids EBS persistence cost. For local
+development and tests, install Playwright manually:
+`pip install playwright && playwright install chromium`.
 
 ### 3.2 Proposed file layout
 ```
 app/
+  db/
+    models/
+      misa_import_state.py  # MisaImportState SQLAlchemy model
   misa/
     __init__.py
     models.py          # MisaTransaction dataclass, MisaImportResult
     query.py           # DB query + classification (Spend/Earn) per §2.1 requirements
     mapper.py          # candidate -> MisaTransaction field mapping per §2.2
-    dedup_store.py      # local JSON state file read/write
+    dedup_store.py      # DB-backed dedup store using MisaImportState
     selectors.py        # all MISA CSS/text selectors, isolated for easy update
     client.py           # Playwright: login(), open_transactions(), add_transaction()
     runner.py           # CLI entrypoint / orchestration
 tests/
   test_misa_query.py     # unit tests for query.py / mapper.py
-  test_misa_dedup.py     # unit tests for dedup_store.py
+  test_misa_dedup.py     # unit tests for dedup_store.py (DB-backed)
   test_misa_client.py    # Playwright tests against local HTML fixtures
   fixtures/
     misa_login.html
@@ -60,23 +71,24 @@ already used for `classification`, `correlation`, `parsing`, etc.
 
 ### 3.3 High-Level Flow
 ```plantuml
-@startuml
+@startuml MISA_Import_Flow
+!theme plain
+
 start
-:Load dedup store JSON;
 :Query parsed_transaction_candidate;
 :Classify rows: Spend / Earn / excluded;
-:Filter out ids already in dedup store;
+:Filter out ids already in misa_import_state;
 if (Any rows left?) then (no)
   :Print summary;
   stop
 else (yes)
   :Launch Playwright browser;
-  :Login to MISA\n(reuse storage_state if present);
+  :Login to MISA;
   :Navigate to transactions page;
   while (More rows?) is (yes)
     :Click Import, fill popup, Save;
     if (Save succeeded?) then (yes)
-      :Mark id imported in dedup store;
+      :Insert row into misa_import_state;
       :Log success;
     else (no)
       :Log failure\n(leave id eligible for retry);
@@ -117,24 +129,31 @@ endif
 | `category` | fixed constant `CATEGORY = "Bars & Coffee"` | fixed constant `EARN_CATEGORY = "Balance"` (confirmed 2026-08-07: Spend and Earn have distinct category lists in MISA, so a single shared category is invalid for one of the two types) |
 
 ### 4.3 Dedup store (`dedup_store.py`)
-- JSON file, default path `ai/update_misa_implementation/imported_state.json`
-  (configurable via `--state-file` / env var).
-- Schema:
-  ```json
-  {
-    "<candidate_id>": {
-      "status": "imported",
-      "imported_at": "2026-08-05T12:00:00+08:00",
-      "amount": "10.50",
-      "account": "PayLah"
-    }
-  }
+- Backed by the `misa_import_state` SQLAlchemy table in the same SQLite database
+  that holds the parsed candidates.
+- Schema (see `app/db/models/misa_import_state.py`):
+  ```python
+  class MisaImportState(Base):
+      __tablename__ = "misa_import_state"
+
+      parsed_candidate_id = Column(
+          Uuid(as_uuid=True),
+          ForeignKey("parsed_transaction_candidate.id"),
+          primary_key=True,
+      )
+      imported_at = Column(TIMESTAMP(timezone=True), nullable=False)
+      amount = Column(Numeric(18, 2), nullable=True)
+      account = Column(String, nullable=True)
+      datetime = Column(String, nullable=True)
+      classification = Column(String, nullable=True)
+      status = Column(String, nullable=False, default="imported")
   ```
 - Only entries with `status == "imported"` are treated as "already done" and
   filtered out of future runs. Failed attempts are not written, so they're
   retried automatically next run (requirements §4).
-- Written atomically (write to temp file + rename) to avoid corruption on
-  crash mid-run (requirements §7 Reliability).
+- Because the state lives in the same SQLite file as the candidates, it is
+  automatically backed up to and restored from S3 alongside the DB. No separate
+  file sync is needed.
 
 ## 5. MISA Automation Layer
 
@@ -228,21 +247,26 @@ No other module should contain a hardcoded selector string.
 ```
 python -m app.misa.runner \
   [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] \
-  [--state-file PATH] [--headed] [--dry-run]
+  [--headed] [--dry-run] [--limit N]
 ```
 - `--dry-run`: classify + map rows and print what *would* be imported, without
   launching a browser or touching the dedup store. Useful for validating §2/§4
   logic before wiring up real MISA selectors.
 - `--headed`: force a visible (non-headless) browser, e.g. for first-time
   login or debugging selector issues.
+- `--limit`: cap the number of rows to import (useful for small verification batches).
+
+`--state-file` is removed because dedup state is now stored in the database.
 
 ### 7.1 Environment variables
-- `MISA_USERNAME`, `MISA_PASSWORD` — loaded via `python-dotenv` from `.env`
-  (never committed; confirm `.env` is in `.gitignore`).
+- `MISA_USERNAME`, `MISA_PASSWORD` — loaded via `python-dotenv` from `.env.misa`
+  (never committed; confirm `.env.misa` is in `.gitignore`).
 
-### 7.2 Dependencies to add
-- `playwright` in `requirements.txt`.
-- One-time setup step documented in README/Makefile: `playwright install chromium`.
+### 7.2 Dependencies
+- `playwright` is **not** in `requirements.txt`. It is installed at runtime on
+  the EC2 MISA import instance, or manually for local development/tests.
+- One-time setup step documented in README/Makefile for local dev:
+  `pip install playwright && playwright install chromium`.
 
 ### 7.3 Date/time formatting
 - **Confirmed (2026-08-07)**: MISA's date field expects `DD/MM/YYYY HH:MM`
@@ -250,10 +274,10 @@ python -m app.misa.runner \
   `dt.strftime("%d/%m/%Y %H:%M")`.
 
 ## 8. Security Design
-- Credentials only via environment variables/`.env`; never logged, never
-  written to the dedup state file or committed to git.
+- Credentials only via environment variables/`.env.misa`; never logged, never
+  written to the dedup state table or committed to git.
 - `storage_state` session file (contains cookies) treated as sensitive: stored
-  outside version control (add to `.gitignore`), same handling as `.env`.
+  outside version control (add to `.gitignore`), same handling as `.env.misa`.
 - No transaction data is sent anywhere except the user's own MISA account via
   their own authenticated session (no third-party network calls).
 
@@ -271,7 +295,8 @@ python -m app.misa.runner \
 - `tests/test_misa_query.py` / mapper: pure unit tests using in-memory
   candidate objects/rows — no DB or browser needed for the classification
   truth table (Spend/Earn/excluded cases from confirmed real-data patterns).
-- `tests/test_misa_dedup.py`: unit tests using a temp JSON file.
+- `tests/test_misa_dedup.py`: unit tests using the shared test database
+  (`tests/conftest.py` creates/drops tables per session).
 - `tests/test_misa_client.py`: Playwright tests driven against local static
   HTML fixtures under `tests/fixtures/` simulating MISA's login page and
   Import popup, so they run offline/without real credentials.

@@ -19,6 +19,7 @@ from app.db.models.event import Event
 from app.db.models.correlation_link import CorrelationLink
 from app.db.models.error_log import ErrorLog
 from app.db.models.audit_log import AuditLog
+from app.db.models.misa_import_state import MisaImportState
 
 # Alembic Config
 config = context.config

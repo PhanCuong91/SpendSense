@@ -30,8 +30,14 @@ summary.
 ## 3. MISA Web Automation
 
 ### 3.1 Library
-- Use **Playwright for Python** (`playwright`). Not currently in `requirements.txt` —
-  must be added, plus running `playwright install` for the chromium browser.
+- Use **Playwright for Python** (`playwright`).
+- Playwright is **not** part of the production runtime dependencies in `requirements.txt`.
+  It is installed separately on the EC2 instance that runs the MISA import, because:
+  - Playwright + Chromium binaries add ~1-2 GB to the Docker image.
+  - The MISA runner does not run in the ECS Fargate task (headless Chromium cannot handle interactive login/2FA).
+  - Keeping the image small reduces ECR storage cost and speeds up ECS task startup.
+- The deployment EC2 user-data script installs Playwright at runtime before invoking the MISA runner.
+- For local development and tests, install Playwright manually: `pip install playwright && playwright install chromium`.
 
 ### 3.2 Login
 - Credentials supplied via environment variables (`MISA_USERNAME`, `MISA_PASSWORD`),
@@ -40,8 +46,8 @@ summary.
 - If MISA requires 2FA/captcha that cannot be automated, the script should support
   a `--headed` / interactive fallback mode where the browser is opened visibly and
   the user can complete login manually before the script continues.
-- Reuse Playwright's `storage_state` (cookies/local storage) to persist a logged-in
-  session between runs where possible, to avoid logging in every time.
+- On the deployment EC2 instance the runner logs in fresh each day. Persisting
+  `storage_state` between runs is optional and not required for cost savings.
 
 ### 3.3 Selectors / DOM structure
 - **Not yet available.** The exact selectors for the login form, the "Import" button
@@ -75,13 +81,40 @@ For each row to import:
 7. Record success or failure for that row.
 
 ## 4. Duplicate Import Prevention
-- Maintain a local state file (e.g. JSON, keyed by `parsed_transaction_candidate.id`)
-  recording which candidate rows have already been successfully imported to MISA.
-- On each run, skip rows already present in the state file.
-- Only mark a row as imported in the state file **after** a confirmed successful save
-  in MISA (see §5). Rows that fail must remain eligible for retry on the next run.
-- Location suggestion: `ai/update_misa_implementation/imported_state.json` or a path
-  configurable via CLI/env var.
+- Maintain the import state in the **SQLite database** itself, in a dedicated table
+  `misa_import_state` (see §4.1), instead of a local JSON file.
+- On each run, skip rows already recorded as `status = "imported"` in that table.
+- Only mark a row as imported **after** a confirmed successful save in MISA (see §5).
+  Rows that fail must remain eligible for retry on the next run.
+- Because the SQLite DB is backed up to and restored from S3, the import state
+  automatically survives across ECS runs and EC2 MISA import runs without any
+  separate file sync.
+
+### 4.1 State table schema
+
+```python
+class MisaImportState(Base):
+    __tablename__ = "misa_import_state"
+
+    parsed_candidate_id = Column(
+        Uuid(as_uuid=True),
+        ForeignKey("parsed_transaction_candidate.id"),
+        primary_key=True,
+    )
+    imported_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    amount = Column(Numeric(18, 2), nullable=True)
+    account = Column(String, nullable=True)
+    datetime = Column(String, nullable=True)
+    classification = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="imported")
+```
+
+- `parsed_candidate_id`: references the imported candidate.
+- `imported_at`: UTC timestamp of the import.
+- `amount`, `account`, `datetime`, `classification`: snapshot of the MISA transaction
+  for audit/debugging.
+- `status`: `"imported"` on success. Failed attempts are **not** written, so the row
+  remains eligible for retry.
 
 ## 5. Logging
 - For each row attempted, print a log line indicating success or failure, including
@@ -94,18 +127,20 @@ For each row to import:
   independently of the FastAPI app.
 
 ## 6. Scope / Date Range
-- Default: import all eligible Spend/Earn rows not already recorded in the local
-  state file (see §4) — i.e., dedup by id is the primary filter.
-- Optionally support `--start-date` / `--end-date` CLI arguments to further restrict
-  by `datetime_sgt`, for ad-hoc/backfill runs. Exact default range still to be
-  confirmed with the user if simple "not yet imported" is not sufficient.
+- Default: import all eligible Spend/Earn rows not already recorded in the import
+  state table (see §4) — i.e., dedup by id is the primary filter.
+- In the AWS deployment, the EC2 MISA runner is invoked with `--start-date` and
+  `--end-date` set to **yesterday and today** (inclusive), to cover the transactions
+  just ingested by the daily ECS run.
+- Optionally support `--start-date` / `--end-date` CLI arguments for ad-hoc/backfill
+  runs.
 
 ## 7. Non-Functional Requirements
 - **Security**: MISA credentials must never be hardcoded or committed; load from
   `.env`/environment only. `.env` must be in `.gitignore` (verify).
 - **Reliability**: the script must be safe to re-run (idempotent) thanks to the
-  dedup state file; a mid-run crash must not corrupt the state file or double-import
-  rows already confirmed as saved.
+  dedup state table; a mid-run crash must not double-import rows already confirmed
+  as saved.
 - **Resilience**: individual row failures (e.g. a validation error in the MISA form)
   must not stop the whole run — log and continue to the next row.
 
@@ -134,9 +169,9 @@ Tests should follow the existing convention in `tests/` (pytest, e.g.
 2. **Field mapping** — verify Amount/Account/Date/Category are mapped per §2.2 for
    both a Spend row and an Earn row (Account = `inferred_sender` vs `inferred_receiver`
    respectively), and that `Category` is always the fixed default.
-3. **Dedup/state file** — verify a row already recorded as imported in the state
-   file (§4) is skipped on a subsequent run, and a failed row is *not* recorded and
-   remains eligible for retry.
+3. **Dedup/state table** — verify a row already recorded as imported in the
+   `misa_import_state` table (§4) is skipped on a subsequent run, and a failed row
+   is *not* recorded and remains eligible for retry.
 4. **Date/time formatting** — verify `datetime_sgt` is converted to the exact
    string format MISA's form expects (once confirmed, see §10.2).
 
@@ -192,3 +227,8 @@ Tests should follow the existing convention in `tests/` (pytest, e.g.
    which leaves it open. `client.py`'s `add_transaction()` still needs to
    be switched over to use `POPUP_SAVE_AND_CLOSE_BUTTON` (currently uses
    the Add-Another one).
+7. **(New, 2026-08-08)** Migrate dedup state from JSON file to
+   `misa_import_state` DB table (§4). This affects `app/misa/runner.py`,
+   `app/misa/dedup_store.py`, and the test suite.
+8. **(New, 2026-08-08)** Remove Playwright from `requirements.txt` and
+   document the separate EC2 runtime installation (§3.1).

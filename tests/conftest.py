@@ -11,6 +11,7 @@ from app.db.models import (  # noqa: F401
     CorrelationLink,
     ErrorLog,
     AuditLog,
+    MisaImportState,
 )
 
 

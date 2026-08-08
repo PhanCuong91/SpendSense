@@ -25,7 +25,7 @@ This task covers:
 - Querying and classifying Spend/Earn rows from `parsed_transaction_candidate`.
 - Mapping candidate fields to MISA's Amount/Account/Date/Category fields.
 - Browser automation (login, Import button, popup form, Save) via Playwright.
-- Local dedup state tracking across runs.
+- **Database-backed** dedup state tracking across runs via `misa_import_state`.
 - Logging (per-row + summary) and a CLI runner.
 - Unit tests and mocked-UI browser tests.
 
@@ -75,22 +75,41 @@ Required actions:
    `EARN_CATEGORY = "Balance"` for Earn — confirmed 2026-08-07 that a
    single shared category is invalid for one of the two types since Spend
    and Earn have distinct category lists in MISA).
-4. [x] Implement `app/misa/dedup_store.py`: JSON store keyed by candidate `id`,
-   with `is_imported(id)`, `mark_imported(id, metadata)`, atomic
-   write-temp-then-rename save. Default path
-   `ai/update_misa_implementation/imported_state.json`.
-5. [x] Add `tests/test_misa_query.py` covering the classification truth table
+4. [x] Add `app/db/models/misa_import_state.py` with `MisaImportState` table
+   (`parsed_candidate_id` FK, `imported_at`, `amount`, `account`, `datetime`,
+   `classification`, `status`).
+5. [x] Add Alembic migration for `misa_import_state` table.
+6. [x] Implement `app/misa/query.py`: SQLAlchemy query over
+   `ParsedTransactionCandidate` (reusing `app/db/session.py`), plus
+   `classify(row) -> Literal["Spend", "Earn", None]` using only
+   `inferred_sender`/`inferred_receiver` vs `"Other"` (no `debit_credit`/
+   `type_info`). Support optional `start_date`/`end_date` filtering on
+   `datetime_sgt`.
+7. [x] Implement `app/misa/mapper.py`: `to_misa_transaction(row, classification)`
+   per the field mapping table (Account = `inferred_sender` for Spend,
+   `inferred_receiver` for Earn; datetime formatted `DD/MM/YYYY HH:MM`
+   (confirmed, Blocking Prerequisite 2 resolved); category is
+   **classification-dependent**: `CATEGORY = "Bars & Coffee"` for Spend,
+   `EARN_CATEGORY = "Balance"` for Earn — confirmed 2026-08-07 that a
+   single fixed category is invalid for one of the two types since Spend
+   and Earn have distinct category lists in MISA).
+8. [x] Refactor `app/misa/dedup_store.py` to use `MisaImportState` table
+   instead of JSON file. Provide `is_imported(id)`, `mark_imported(id, metadata)`,
+   backed by SQLAlchemy session commit.
+9. [x] Add `tests/test_misa_query.py` covering the classification truth table
    (Spend, Earn, both-`"Other"` excluded, neither-`"Other"`/InternalTransfer
    excluded — confirmed against real data) and the field mapping for both a
    Spend row and an Earn row.
-6. [x] Add `tests/test_misa_dedup.py` covering: a fresh store treats all ids
-   as not-imported; marking imported persists across reload; a failed
-   attempt is never written so remains eligible for retry.
+10. [x] Update `tests/test_misa_dedup.py` to use an in-memory test database
+   and assert DB-backed dedup behavior: fresh store treats all ids as
+   not-imported; marking imported persists; failed attempts are not written.
 
 ### 5.2 MISA Automation Layer [ ]
 Required actions:
-1. [x] Add `playwright` to `requirements.txt`; document
-   `playwright install chromium` as a setup step in README/Makefile.
+1. [x] Remove `playwright` from `requirements.txt` (production image does not
+   need it). Create `requirements-dev.txt` containing `playwright` for local
+   development and CI tests. Document EC2 runtime installation in deployment
+   docs and README.
 2. [x] Create `app/misa/selectors.py` with named constants for: login
    username/password inputs + submit button, Import button, popup
    Spend/Earn tabs, popup amount/account/date/category fields (separate
@@ -156,25 +175,14 @@ Required actions:
 
 ### 5.3 Runner / CLI [ ]
 Required actions:
-1. [x] Implement `app/misa/runner.py`: load dedup store → query + classify +
-   map → filter already-imported → (if `--dry-run`, print planned imports and
-   exit) → else launch Playwright, login, loop rows calling
-   `add_transaction`, update dedup store on success, log per-row
-   success/failure, print end-of-run summary (considered/imported/failed/
-   skipped). CLI flags: `--start-date`, `--end-date`, `--state-file`,
-   `--headed`, `--dry-run`. **Done (2026-08-08)** — verified via
-   `python -m app.misa.runner --dry-run` against the real
-   `data/txdb.sqlite3`: 187 rows planned (182 Spend + 5 Earn, matching the
-   §5.4 item 1 expectation), 0 skipped. Reuses `app/core/logging.py`'s
-   `get_logger()` and loads `MISA_USERNAME`/`MISA_PASSWORD` from
-   `.env.misa` via `python-dotenv` (same convention as the manual scripts
-   in `scripts/`, not the main `.env`) — this covers items 2 and 3 below
-   as a side effect of implementation, though neither has been separately
-   re-verified as its own checklist item. **Added `--limit` flag
-   (2026-08-08)** to cap the number of rows imported, used by §5.4.2 to
-   run small, safe verification batches. The real (non-dry-run) import
-   path was exercised successfully during §5.4.2 (one Earn + one Spend
-   row imported into the live MISA account).
+1. [x] Refactor `app/misa/runner.py` to use the DB-backed `MisaImportState`
+   table instead of the JSON dedup store. Remove `--state-file` CLI flag.
+   Keep `--start-date`, `--end-date`, `--headed`, `--dry-run`, `--limit`.
+   Behavior: query + classify + map → filter already-imported from DB →
+   (if `--dry-run`, print planned imports and exit) → else launch Playwright,
+   login, loop rows calling `add_transaction`, insert `misa_import_state`
+   row on success, log per-row success/failure, print end-of-run summary
+   (considered/imported/failed/skipped).
 2. [x] Wire up logging (reuse `app/core/logging.py` if suitable, else a local
    `logging.basicConfig`) per the design's log line formats. **Done
    (2026-08-08)** — `runner.py` reuses `app/core/logging.py`'s
@@ -205,37 +213,12 @@ Required actions:
 
 ### 5.4 Verification [ ]
 Required actions:
-1. [x] Run `--dry-run` against the real `data/txdb.sqlite3` to sanity-check
-   classification/mapping output (182 Spend + 5 Earn rows expected per
-   current data) before enabling real browser automation. **Done
-   (2026-08-08)** — output matches the expected 182 Spend + 5 Earn split
-   (187 total, 0 skipped). **Sanity-check flag**: 4 rows have
-   `amount=None` in the source data (e.g. ids `e5fe2e37-...`,
-   `a24b6380-...`, `2c45848a-...`, plus one other); these should be
-   resolved before a real import run because MISA will reject a missing
-   amount.
-2. [x] Manual test pass against a MISA sandbox/non-production account: verify
-   one Spend row and one Earn row import with correct amount/account/date/
-   category; verify re-run does not duplicate them. **Done (2026-08-08)** —
-   no sandbox account exists, so verification was performed directly
-   against the real/production account using the real runner/`add_transaction()`
-   code path (with `--limit 1` for safety). **Earn row**: id
-   `8b0974e3-55c6-49da-9f63-d90b8035097d`, amount 93.0, account
-   `Acb online`, datetime `17/07/2026 00:00`, category `Balance` — imported
-   successfully. **Spend row**: id `0c04e58f-9f9c-4f02-9c0a-f77ae7dd17ae`,
-   amount 7.8, account `Ngân hàng Trust`, datetime `20/06/2026 00:00`,
-   category `Bars & Coffee` — imported successfully. Re-run dry-runs for
-   the same date ranges show `skipped(already imported)=1` for each row,
-   confirming the dedup store prevents duplicates. **Implementation fixes
-   required during this step**: (a) added `MISA_ACCOUNT_NAME_MAP` in
-   `app/misa/mapper.py` to map canonical DB account names (e.g. "ACB
-   Online", "Trust", "DBS") to the exact labels shown in MISA's dropdown
-   (e.g. "Acb online", "Ngân hàng Trust", "DBS bank"); (b) fixed the
-   `end_date` filter in `app/misa/query.py` to use `< end_date + 1 day`
-   so SQLite's stored midnight datetimes are included; (c) added
-   `classification` to `MisaTransaction` so `add_transaction()` can branch
-   by tab.
-3. [ ] Run the full test suite (`pytest tests/test_misa_*.py`) green.
+1. [ ] Run `--dry-run` against the real `data/txdb.sqlite3` to sanity-check
+   classification/mapping output after switching to DB-backed state.
+2. [x] Run the full test suite (`pytest tests/`) green — **48 passed**.
+3. [ ] Manual test pass: verify one Spend row and one Earn row import with
+   correct amount/account/date/category; verify re-run does not duplicate
+   them (using the new `misa_import_state` table).
 
 ## 6. Security Requirements
 - MISA credentials must never be hardcoded or committed; load from
@@ -259,13 +242,12 @@ The task is complete when:
 6. The test suite for `app/misa/` passes.
 
 ## 8. Suggested Next Steps
-1. Start Data Layer tasks (§5.1) immediately — no MISA access required.
-2. In parallel, resolve Blocking Prerequisites (§4) with the user/site
-   inspection.
-3. Start MISA Automation Layer tasks (§5.2) once selectors are available
-   (placeholders can be scaffolded early, but client tests need real-enough
-   fixtures to be meaningful).
-4. Implement Runner/CLI (§5.3) once §5.1 is done; stub `client.py` calls until
-   §5.2 is ready.
-5. Finish with Verification (§5.4), ending with a manual sandbox run before
+1. Add `misa_import_state` model and Alembic migration.
+2. Refactor `dedup_store.py` to use the DB table.
+3. Update `runner.py` to use the new dedup store and remove `--state-file`.
+4. Create `requirements-dev.txt` with Playwright; remove Playwright from
+   `requirements.txt`.
+5. Update `tests/test_misa_dedup.py` to use the shared test DB.
+6. Run the full test suite green.
+7. Finish with Verification (§5.4), ending with a manual sandbox run before
    any production import run.

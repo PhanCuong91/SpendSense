@@ -1,0 +1,4 @@
+# Development / test-only dependencies.
+# Playwright and its browsers are installed at runtime on the EC2 MISA import
+# instance, but local development and the browser-fixture test suite need them.
+playwright==1.62.0

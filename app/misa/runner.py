@@ -3,16 +3,16 @@
 
 Usage:
     python -m app.misa.runner [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]
-        [--state-file PATH] [--headed] [--dry-run]
+        [--headed] [--dry-run] [--limit N]
 
 See ai/update_misa_implementation/update_misa_design.md §5/§6/§7 for the
 orchestration, logging, and CLI design this implements.
 
-Orchestration: load dedup store -> query + classify + map -> filter
-already-imported rows -> (--dry-run: print planned imports, exit) -> else
+Orchestration: query + classify + map -> filter already-imported rows (using
+`misa_import_state`) -> (--dry-run: print planned imports, exit) -> else
 launch Playwright, log in, loop rows calling `client.add_transaction()`,
-update the dedup store on each success, log per-row success/failure, print
-an end-of-run summary.
+insert a `misa_import_state` row on each success, log per-row success/failure,
+print an end-of-run summary.
 
 Credentials: MISA_USERNAME / MISA_PASSWORD are loaded from `.env.misa` (kept
 separate from the main `.env`, gitignored) via python-dotenv, matching the
@@ -33,7 +33,7 @@ from app.core.logging import get_logger
 from app.db.models.parsed_candidate import ParsedTransactionCandidate
 from app.db.session import SessionLocal
 from app.misa import client
-from app.misa.dedup_store import DEFAULT_STATE_FILE, DedupStore
+from app.misa.dedup_store import DedupStore
 from app.misa.mapper import to_misa_transaction
 from app.misa.models import MisaTransaction
 from app.misa.query import Classification, get_classified_candidates
@@ -56,9 +56,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--start-date", type=_parse_date, default=None, help="Inclusive start date (YYYY-MM-DD)")
     parser.add_argument("--end-date", type=_parse_date, default=None, help="Inclusive end date (YYYY-MM-DD)")
-    parser.add_argument(
-        "--state-file", default=DEFAULT_STATE_FILE, help="Path to the dedup state JSON file"
-    )
     parser.add_argument("--headed", action="store_true", help="Run with a visible (non-headless) browser")
     parser.add_argument(
         "--limit",
@@ -193,24 +190,27 @@ def _run_import(planned: List[PlannedRow], considered: int, skipped: int, dedup_
 
 
 def run(args: argparse.Namespace) -> int:
-    dedup_store = DedupStore(path=args.state_file)
-    planned, considered, skipped = _plan_rows(dedup_store, args.start_date, args.end_date)
+    dedup_store = DedupStore()
+    try:
+        planned, considered, skipped = _plan_rows(dedup_store, args.start_date, args.end_date)
 
-    if args.limit is not None and args.limit >= 0:
-        planned = planned[: args.limit]
+        if args.limit is not None and args.limit >= 0:
+            planned = planned[: args.limit]
 
-    if args.dry_run:
-        return _run_dry(planned, considered, skipped)
+        if args.dry_run:
+            return _run_dry(planned, considered, skipped)
 
-    if not planned:
-        logger.info(
-            "Summary: considered=%d imported=0 failed=0 skipped(already imported)=%d",
-            considered,
-            skipped,
-        )
-        return 0
+        if not planned:
+            logger.info(
+                "Summary: considered=%d imported=0 failed=0 skipped(already imported)=%d",
+                considered,
+                skipped,
+            )
+            return 0
 
-    return _run_import(planned, considered, skipped, dedup_store, args.headed)
+        return _run_import(planned, considered, skipped, dedup_store, args.headed)
+    finally:
+        dedup_store.close()
 
 
 def main(argv: Optional[List[str]] = None) -> int:

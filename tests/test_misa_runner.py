@@ -6,10 +6,18 @@ fakes/mocks for Playwright, `client`, and the dedup store so they run fully
 offline: no real browser, no real MISA credentials, no real DB.
 """
 import logging
+from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
+from app.db.base import Base
+from app.db.models.email_raw import EmailRaw
+from app.db.models.parsed_candidate import ParsedTransactionCandidate
 from app.misa import runner
 from app.misa.dedup_store import DedupStore
 from app.misa.models import MisaImportResult, MisaTransaction
@@ -50,13 +58,51 @@ def _messages(records, level=None):
     return [r.getMessage() for r in records if level is None or r.levelno == level]
 
 
-class _Row:
-    def __init__(self, id):
-        self.id = id
+@pytest.fixture
+def db_session():
+    """Provide a function-scoped in-memory DB session for runner tests."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
 
 
-def _planned_row(row_id, amount, account="Trust", classification="Spend"):
-    row = _Row(id=row_id)
+def _make_candidate(session, amount, inferred_sender="Trust", inferred_receiver="Other"):
+    email = EmailRaw(
+        gmail_message_id=f"test-{uuid4()}",
+        internal_date=datetime.now(timezone.utc),
+    )
+    session.add(email)
+    session.commit()
+
+    candidate = ParsedTransactionCandidate(
+        email_id=email.id,
+        amount=Decimal(str(amount)),
+        currency="SGD",
+        datetime_sgt=datetime(2026, 8, 8, 0, 0, tzinfo=timezone.utc),
+        inferred_sender=inferred_sender,
+        inferred_receiver=inferred_receiver,
+    )
+    session.add(candidate)
+    session.commit()
+    return candidate
+
+
+def _planned_row(session, amount, account="Trust", classification="Spend"):
+    row = _make_candidate(
+        session,
+        amount,
+        inferred_sender=account if classification == "Spend" else "Other",
+        inferred_receiver="Other" if classification == "Spend" else account,
+    )
     tx = MisaTransaction(
         amount=amount,
         account=account,
@@ -120,8 +166,8 @@ def _fake_sync_playwright_factory():
 # ---------------------------------------------------------------------------
 
 
-def test_dry_run_logs_planned_rows(log_records):
-    row, classification, tx = _planned_row("row-1", 1.23)
+def test_dry_run_logs_planned_rows(log_records, db_session):
+    row, classification, tx = _planned_row(db_session, 1.23)
 
     exit_code = runner._run_dry([(row, classification, tx)], considered=1, skipped=0)
 
@@ -129,14 +175,14 @@ def test_dry_run_logs_planned_rows(log_records):
     messages = _messages(log_records)
     assert any(m.startswith("Dry run: 1 row(s) would be imported") for m in messages)
     assert (
-        "[would-import] id=row-1 type=Spend amount=1.23 account=Trust datetime=08/08/2026 00:00 "
+        f"[would-import] id={row.id} type=Spend amount=1.23 account=Trust datetime=08/08/2026 00:00 "
         "category=Bars & Coffee" in messages
     )
 
 
-def test_imported_and_failed_log_lines_match_design_format(monkeypatch, tmp_path, log_records):
-    ok_row, ok_classification, ok_tx = _planned_row("ok-1", 1.23, account="Trust")
-    bad_row, bad_classification, bad_tx = _planned_row("bad-1", 4.56, account="PayLah")
+def test_imported_and_failed_log_lines_match_design_format(monkeypatch, db_session, log_records):
+    ok_row, ok_classification, ok_tx = _planned_row(db_session, 1.23, account="Trust")
+    bad_row, bad_classification, bad_tx = _planned_row(db_session, 4.56, account="PayLah")
     planned = [(ok_row, ok_classification, ok_tx), (bad_row, bad_classification, bad_tx)]
 
     monkeypatch.setenv("MISA_USERNAME", "u")
@@ -153,26 +199,26 @@ def test_imported_and_failed_log_lines_match_design_format(monkeypatch, tmp_path
     monkeypatch.setattr(runner.client, "add_transaction", fake_add_transaction)
     monkeypatch.setattr(runner, "sync_playwright", _fake_sync_playwright_factory())
 
-    dedup_store = DedupStore(path=str(tmp_path / "state.json"))
+    dedup_store = DedupStore(db=db_session)
     exit_code = runner._run_import(planned, considered=2, skipped=0, dedup_store=dedup_store, headed=False)
 
     assert exit_code == 1  # at least one row failed
     info_messages = _messages(log_records, logging.INFO)
     error_messages = _messages(log_records, logging.ERROR)
 
-    assert "[imported] id=ok-1 amount=1.23 account=Trust datetime=08/08/2026 00:00" in info_messages
+    assert f"[imported] id={ok_row.id} amount=1.23 account=Trust datetime=08/08/2026 00:00" in info_messages
     assert (
-        "[failed]   id=bad-1 amount=4.56 account=PayLah datetime=08/08/2026 00:00 "
+        f"[failed]   id={bad_row.id} amount=4.56 account=PayLah datetime=08/08/2026 00:00 "
         "reason=save button not found" in error_messages
     )
     assert "Summary: considered=2 imported=1 failed=1 skipped(already imported)=0" in info_messages
 
-    assert dedup_store.is_imported("ok-1") is True
-    assert dedup_store.is_imported("bad-1") is False
+    assert dedup_store.is_imported(ok_row.id) is True
+    assert dedup_store.is_imported(bad_row.id) is False
 
 
-def test_summary_logged_when_credentials_missing(monkeypatch, tmp_path, log_records):
-    row, classification, tx = _planned_row("row-1", 1.0)
+def test_summary_logged_when_credentials_missing(monkeypatch, db_session, log_records):
+    row, classification, tx = _planned_row(db_session, 1.0)
 
     monkeypatch.delenv("MISA_USERNAME", raising=False)
     monkeypatch.delenv("MISA_PASSWORD", raising=False)
@@ -182,7 +228,7 @@ def test_summary_logged_when_credentials_missing(monkeypatch, tmp_path, log_reco
 
     monkeypatch.setattr(runner, "sync_playwright", _fail_if_called)
 
-    dedup_store = DedupStore(path=str(tmp_path / "state.json"))
+    dedup_store = DedupStore(db=db_session)
     exit_code = runner._run_import([(row, classification, tx)], considered=1, skipped=0, dedup_store=dedup_store, headed=False)
 
     assert exit_code == 1
@@ -195,11 +241,11 @@ def test_summary_logged_when_credentials_missing(monkeypatch, tmp_path, log_reco
 # ---------------------------------------------------------------------------
 
 
-def test_dry_run_limit_caps_planned_rows(log_records, monkeypatch):
+def test_dry_run_limit_caps_planned_rows(log_records, monkeypatch, db_session):
     """--limit should cap the number of rows shown/considered for import."""
-    row1, _, tx1 = _planned_row("row-1", 1.0)
-    row2, _, tx2 = _planned_row("row-2", 2.0)
-    row3, _, tx3 = _planned_row("row-3", 3.0)
+    row1, _, tx1 = _planned_row(db_session, 1.0)
+    row2, _, tx2 = _planned_row(db_session, 2.0)
+    row3, _, tx3 = _planned_row(db_session, 3.0)
     planned = [(row1, "Spend", tx1), (row2, "Spend", tx2), (row3, "Spend", tx3)]
 
     monkeypatch.setattr(runner, "_plan_rows", lambda *args, **kwargs: (planned, 3, 0))
@@ -224,8 +270,8 @@ def test_main_loads_dotenv_from_env_misa_file_not_main_env(monkeypatch):
     assert calls == [".env.misa"]
 
 
-def test_credentials_are_never_logged(monkeypatch, tmp_path, log_records):
-    row, classification, tx = _planned_row("row-1", 1.0)
+def test_credentials_are_never_logged(monkeypatch, db_session, log_records):
+    row, classification, tx = _planned_row(db_session, 1.0)
 
     monkeypatch.setenv("MISA_USERNAME", "secret_user_xyz")
     monkeypatch.setenv("MISA_PASSWORD", "supersecretpassword123")
@@ -235,7 +281,7 @@ def test_credentials_are_never_logged(monkeypatch, tmp_path, log_records):
     monkeypatch.setattr(runner.client, "add_transaction", lambda page, tx: MisaImportResult(success=True))
     monkeypatch.setattr(runner, "sync_playwright", _fake_sync_playwright_factory())
 
-    dedup_store = DedupStore(path=str(tmp_path / "state.json"))
+    dedup_store = DedupStore(db=db_session)
     runner._run_import([(row, classification, tx)], considered=1, skipped=0, dedup_store=dedup_store, headed=False)
 
     all_messages = " ".join(_messages(log_records))
