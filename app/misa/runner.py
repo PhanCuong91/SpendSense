@@ -27,9 +27,13 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from dotenv import load_dotenv
-from playwright.sync_api import sync_playwright
 
 from app.core.logging import get_logger
+
+# Expose sync_playwright at module level so tests can monkeypatch it without
+# forcing Playwright to be installed at import time. The real import happens
+# inside _run_import() only when a browser is actually needed.
+sync_playwright = None
 from app.db.models.parsed_candidate import ParsedTransactionCandidate
 from app.db.session import SessionLocal
 from app.misa import client
@@ -115,17 +119,39 @@ def _run_dry(planned: List[PlannedRow], considered: int, skipped: int) -> int:
     return 0
 
 
+def _resolve_secret(arn_env_var: str) -> Optional[str]:
+    """Resolve a value from AWS Secrets Manager when its ARN is provided.
+
+    Falls back to None so plain environment variables remain the default for
+    local development.
+    """
+    arn = os.environ.get(arn_env_var)
+    if not arn:
+        return None
+    import boto3
+
+    return boto3.client("secretsmanager").get_secret_value(SecretId=arn)["SecretString"]
+
+
 def _run_import(planned: List[PlannedRow], considered: int, skipped: int, dedup_store: DedupStore, headed: bool) -> int:
-    username = os.environ.get("MISA_USERNAME")
-    password = os.environ.get("MISA_PASSWORD")
+    username = os.environ.get("MISA_USERNAME") or _resolve_secret("MISA_USERNAME_SECRET_ARN")
+    password = os.environ.get("MISA_PASSWORD") or _resolve_secret("MISA_PASSWORD_SECRET_ARN")
     if not username or not password:
-        logger.error("MISA_USERNAME and MISA_PASSWORD must be set (see .env.misa)")
+        logger.error(
+            "MISA_USERNAME and MISA_PASSWORD must be set (see .env.misa), "
+            "or their ARNs must be provided via MISA_USERNAME_SECRET_ARN / "
+            "MISA_PASSWORD_SECRET_ARN"
+        )
         return 1
+
+    # Import Playwright only when actually launching a browser. This keeps the
+    # Docker image free of the heavy playwright/Chromium dependency.
+    from playwright.sync_api import sync_playwright as _sync_playwright
 
     imported = 0
     failed = 0
 
-    with sync_playwright() as p:
+    with _sync_playwright() as p:
         browser = p.chromium.launch(headless=not headed)
         try:
             storage_state_path = client.DEFAULT_STORAGE_STATE_PATH

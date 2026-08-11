@@ -242,12 +242,12 @@ The task is complete when:
 6. The test suite for `app/misa/` passes.
 
 ## 8. Suggested Next Steps
-1. Add `misa_import_state` model and Alembic migration.
-2. Refactor `dedup_store.py` to use the DB table.
-3. Update `runner.py` to use the new dedup store and remove `--state-file`.
-4. Create `requirements-dev.txt` with Playwright; remove Playwright from
-   `requirements.txt`.
-5. Update `tests/test_misa_dedup.py` to use the shared test DB.
-6. Run the full test suite green.
-7. Finish with Verification (§5.4), ending with a manual sandbox run before
-   any production import run.
+1. Run `python -m app.misa.runner --dry-run` against the real
+   `data/txdb.sqlite3` to verify the planned set.
+2. Run a manual test pass on the real MISA account with `--limit 1` for one
+   Spend row and one Earn row; confirm no duplicates on re-run.
+3. Clean up the leftover test Earn transaction created during selector
+   verification (amount 10, account "Helper", category "Balance"), if
+   desired.
+4. Update deployment docs/EC2 user-data to install Playwright and run
+   `python -m app.misa.runner --start-date yesterday --end-date today`.

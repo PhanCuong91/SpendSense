@@ -50,15 +50,15 @@ summary.
   `storage_state` between runs is optional and not required for cost savings.
 
 ### 3.3 Selectors / DOM structure
-- **Not yet available.** The exact selectors for the login form, the "Import" button
-  on the transactions page, and the popup/modal form fields (amount, account, date,
-  category, save button) are unknown at spec time.
-- The implementation must isolate all selectors in one place (e.g. a `selectors.py`
-  config module or constants block) so they can be updated after inspecting the live
-  page (via browser DevTools) without touching the core logic.
-- Before writing the final selectors, a short manual inspection pass of the real
-  MISA "Add Transaction" popup is required (recorded separately, not part of this
-  requirements doc).
+- **Mostly confirmed (2026-08-08).** All selectors for the login form, the
+  "Import" button, the popup Spend/Earn tabs, and all Spend/Earn field inputs
+  are isolated in `app/misa/selectors.py` and confirmed working via manual
+  scripts.
+- Remaining uncertainty: `LOGIN_2FA_INDICATOR`, `SUCCESS_INDICATOR`, and
+  `ERROR_INDICATOR` are still guessed/never matched in practice (the real
+  success signal appears to be the popup closing, not a toast).
+- All selectors must remain isolated in `app/misa/selectors.py` so live-site
+  changes can be updated without touching core logic.
 
 ### 3.4 Per-transaction flow
 For each row to import:
@@ -72,13 +72,14 @@ For each row to import:
    respective dropdowns (typing text alone only filters the dropdown — the
    matching option must be explicitly clicked to commit the selection, see
    §10.5).
-5. Click the Save-and-close button (**not** confirmed yet — MISA's popup has
-   two visually similar Save buttons, "Lưu" (Save & Close) and "Lưu và thêm"
-   (Save & Add Another); only the latter's selector is confirmed so far, see
-   §10.6).
+5. Click the Save-and-close button ("Lưu", confirmed 2026-08-08).
 6. Verify the popup closed / a success indicator appeared (or detect an error
    message/validation failure).
 7. Record success or failure for that row.
+
+The implementation lives in `app/misa/client.py::add_transaction()`, which
+now handles Spend/Earn tab switching, the post-tab-switch settle wait,
+category option click, and Save-and-close.
 
 ## 4. Duplicate Import Prevention
 - Maintain the import state in the **SQLite database** itself, in a dedicated table
@@ -92,13 +93,15 @@ For each row to import:
 
 ### 4.1 State table schema
 
+Implemented in [app/db/models/misa_import_state.py](app/db/models/misa_import_state.py):
+
 ```python
 class MisaImportState(Base):
     __tablename__ = "misa_import_state"
 
     parsed_candidate_id = Column(
         Uuid(as_uuid=True),
-        ForeignKey("parsed_transaction_candidate.id"),
+        ForeignKey("parsed_transaction_candidate.id", ondelete="CASCADE"),
         primary_key=True,
     )
     imported_at = Column(TIMESTAMP(timezone=True), nullable=False)
@@ -108,6 +111,10 @@ class MisaImportState(Base):
     classification = Column(String, nullable=True)
     status = Column(String, nullable=False, default="imported")
 ```
+
+The dedup store ([app/misa/dedup_store.py](app/misa/dedup_store.py)) also
+auto-creates the table if it is missing, so the runner works against older
+DB files that pre-date the Alembic migration.
 
 - `parsed_candidate_id`: references the imported candidate.
 - `imported_at`: UTC timestamp of the import.
@@ -134,10 +141,12 @@ class MisaImportState(Base):
   just ingested by the daily ECS run.
 - Optionally support `--start-date` / `--end-date` CLI arguments for ad-hoc/backfill
   runs.
+- `--state-file` is no longer supported; dedup state is always read from and
+  written to the `misa_import_state` table.
 
 ## 7. Non-Functional Requirements
 - **Security**: MISA credentials must never be hardcoded or committed; load from
-  `.env`/environment only. `.env` must be in `.gitignore` (verify).
+  `.env.misa`/environment only. `.env.misa` must be in `.gitignore` (verify).
 - **Reliability**: the script must be safe to re-run (idempotent) thanks to the
   dedup state table; a mid-run crash must not double-import rows already confirmed
   as saved.
@@ -205,6 +214,13 @@ Tests should follow the existing convention in `tests/` (pytest, e.g.
    interactive login flow). **Still open** — 2FA has never actually been
    triggered during testing so far; the indicator selector remains a
    guess.
+4. **Resolved (2026-08-08)** — the dedup state migration is done and the
+   `misa_import_state` table is created automatically if missing.
+5. **Resolved (2026-08-08)** — `requirements.txt` no longer contains
+   Playwright; local dev uses `requirements-dev.txt`.
+6. **Resolved (2026-08-08)** — `client.py::add_transaction()` now switches
+   tabs, clicks category options, waits for the async account load, and uses
+   the Save-and-close button.
 4. **(New, 2026-08-07)** Async default-account bug: MISA's popup
    asynchronously loads/overwrites a default account ~1-2.5s after the
    popup opens AND again after switching tabs. Any account selection made

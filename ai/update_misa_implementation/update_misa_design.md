@@ -131,14 +131,14 @@ endif
 ### 4.3 Dedup store (`dedup_store.py`)
 - Backed by the `misa_import_state` SQLAlchemy table in the same SQLite database
   that holds the parsed candidates.
-- Schema (see `app/db/models/misa_import_state.py`):
+- Schema (see [app/db/models/misa_import_state.py](app/db/models/misa_import_state.py)):
   ```python
   class MisaImportState(Base):
       __tablename__ = "misa_import_state"
 
       parsed_candidate_id = Column(
           Uuid(as_uuid=True),
-          ForeignKey("parsed_transaction_candidate.id"),
+          ForeignKey("parsed_transaction_candidate.id", ondelete="CASCADE"),
           primary_key=True,
       )
       imported_at = Column(TIMESTAMP(timezone=True), nullable=False)
@@ -154,6 +154,9 @@ endif
 - Because the state lives in the same SQLite file as the candidates, it is
   automatically backed up to and restored from S3 alongside the DB. No separate
   file sync is needed.
+- **Auto-creation**: `DedupStore` creates the table automatically if it is
+  missing, so the runner is safe against older DB files that pre-date the
+  Alembic migration.
 
 ## 5. MISA Automation Layer
 
@@ -184,46 +187,30 @@ No other module should contain a hardcoded selector string.
 - `login(page, username, password) -> bool`
   - Navigates to MISA login URL, fills credentials, submits.
   - If a 2FA/captcha element is detected and cannot be handled automatically,
-    switches to interactive mode: opens headed browser and waits (with a
-    timeout) for the user to complete login manually.
+    falls back to an interactive wait (caller must use `--headed`).
   - On success, persists `context.storage_state(path=...)` for reuse next run.
   - **Implemented and confirmed working.**
 - `click_import_button(page) -> bool`
   - Clicks Import → Single Transaction option → waits for the popup.
-  - Includes a `page.wait_for_timeout(POPUP_ACCOUNT_SETTLE_MS)` (2.5s) after
-    the popup opens, to let MISA's async default-account load settle before
-    any caller touches the account field (see §9 Failure Handling). **Only
-    covers the initial popup-open case** — switching tabs (Spend↔Earn)
-    re-triggers the same async load and needs an equivalent wait after the
-    tab click too; not yet added to `client.py` (currently only present in
-    the ad-hoc Earn manual test script).
-- `select_account(page, account_name) -> bool`
-  - Clicks the account dropdown, waits for the options container, clicks the
-    matching option. **Currently hardcoded to the Spend selectors** — needs
-    a `container`/tab-aware parameter (or a `classification` argument) to
-    support Earn, mirroring `selectors.account_option_selector()`'s existing
-    `container` parameter.
+  - Waits `POPUP_ACCOUNT_SETTLE_MS` (2.5s) after the popup opens so MISA's
+    async default-account load settles before touching the account field.
+  - **Implemented and confirmed working.**
+- `select_account(page, account_name, account_input, account_options_container)`
+  - Tab-aware account dropdown selection; clicks the input, waits for the
+    options container, clicks the matching option.
+  - **Implemented and confirmed working for both Spend and Earn tabs.**
 - `add_transaction(page, tx: MisaTransaction) -> MisaImportResult`
-  - Clicks Import button, waits for popup, fills Amount/Account/Date/Category,
-    clicks Save.
-  - **Known gaps (2026-08-07)**: (1) always uses the Spend-tab selectors
-    regardless of `tx`'s classification — no tab click, no Spend/Earn
-    selector switch; (2) fills the category field via `fill()` only, but
-    this does not commit the selection — confirmed the matching dropdown
-    option must also be explicitly clicked afterward, or Save is blocked by
-    validation; (3) uses `POPUP_SAVE_AND_ADD_BUTTON`, which leaves the popup
-    open in "add another" mode instead of closing it — not suitable for a
-    real per-row import loop until the real "Lưu" button is identified.
-  - Waits for either a success indicator or an error indicator (both defined
-    in `selectors.py`); returns a result object with `success: bool` and
-    `error_message: Optional[str]`. **Unconfirmed**: neither indicator has
-    ever matched in practice — the more reliable signal observed so far is
-    the background transaction list's total-row counter incrementing, or
-    the popup actually closing (only true for the real "Lưu" button, not
-    `POPUP_SAVE_AND_ADD_BUTTON`).
+  - Clicks Import button, selects the Spend or Earn tab based on
+    `tx.classification`, fills Amount/Account/Date/Category, clicks the
+    Save-and-close button (`POPUP_SAVE_AND_CLOSE_BUTTON` / "Lưu").
+  - Re-applies `POPUP_ACCOUNT_SETTLE_MS` after switching to the Earn tab.
+  - Explicitly clicks the matching category dropdown option after `fill()`.
+  - Waits for either `SUCCESS_INDICATOR` visibility or the popup closing as
+    success; `ERROR_INDICATOR` visibility as failure.
   - Wrapped in try/except so a single row's exception is caught, converted to
     a failed `MisaImportResult`, and does not propagate (requirements §7
     Resilience).
+  - **Implemented (2026-08-08).**
 
 ### 5.3 Session reuse
 - On subsequent runs, `client.py` first tries to create a Playwright context
@@ -313,25 +300,15 @@ Same as requirements §8:
 4. Console/log output shows per-row success/failure and an end-of-run summary.
 5. No MISA credentials are stored in the repository.
 
-## 12. Open Items (blocking full implementation)
+## 12. Open Items
 1. ~~Real selectors/HTML for MISA login, Import button, and popup form
-   (§5.1).~~ **Mostly resolved (2026-08-07)** — see §5.1 for the confirmed
-   list. Remaining: the real "Lưu" (Save & Close) button selector.
+   (§5.1).~~ **Resolved (2026-08-08)**.
 2. ~~Confirmed date/time format expected by the MISA date field (§7.3).~~
    **Resolved**: `DD/MM/YYYY HH:MM`.
 3. Confirmed presence/absence of 2FA/captcha on MISA login (§5.2). **Still
    open** — never actually triggered during testing.
-4. **(New, 2026-08-07, blocking for §5.2/`client.py`)** `add_transaction()`
-   must be extended to: (a) click the Spend or Earn tab per `tx`'s
-   classification and select the matching selector set; (b) re-apply the
-   `POPUP_ACCOUNT_SETTLE_MS` wait after any tab switch, not just after the
-   initial popup open; (c) explicitly click the matching category dropdown
-   option after `fill()`, not rely on `fill()` alone; (d) use the real
-   Save-and-close button once found, instead of
-   `POPUP_SAVE_AND_ADD_BUTTON` (Save & Add Another), which would otherwise
-   leave the popup open after every row in a real import loop.
-5. **(New, 2026-08-07)** No MISA sandbox/test account is available — all
-   manual verification so far has been against the real/production MISA
-   account. One real test Earn transaction (amount 10, account "Helper",
-   category "Balance") was created as a side effect of confirming the Save
-   button behavior and has not yet been cleaned up.
+4. ~~`add_transaction()` Spend/Earn tab switching, category option click,
+   async account settle, and Save-and-close button.~~ **Resolved
+   (2026-08-08)**.
+5. Manual verification of one Spend + one Earn row against the real MISA
+   account using the new `misa_import_state` table. **Not yet done**.

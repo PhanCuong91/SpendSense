@@ -6,12 +6,13 @@ behavior of each function.
 
 import logging
 from pathlib import Path
-from typing import NamedTuple, Optional, Union
-
-from playwright.sync_api import BrowserContext, Page
+from typing import TYPE_CHECKING, NamedTuple, Optional, Union
 
 from app.misa import selectors
 from app.misa.models import MisaImportResult, MisaTransaction
+
+if TYPE_CHECKING:
+    from playwright.sync_api import BrowserContext, Page
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ POPUP_TIMEOUT_MS = 10_000
 POPUP_ACCOUNT_SETTLE_MS = 2_500
 
 
-def is_logged_in(page: Page) -> bool:
+def is_logged_in(page: "Page") -> bool:
     """Check whether `page` is currently on an authenticated MISA session.
 
     Navigates to the transactions page and checks for the success indicator
@@ -43,7 +44,7 @@ def is_logged_in(page: Page) -> bool:
         return False
 
 
-def _wait_for_login_outcome(page: Page, timeout_ms: int) -> bool:
+def _wait_for_login_outcome(page: "Page", timeout_ms: int) -> bool:
     """Poll for either the success or error indicator, whichever appears
     first, up to `timeout_ms`. Returns True on success, False on error or
     timeout (neither indicator ever appeared)."""
@@ -59,7 +60,7 @@ def _wait_for_login_outcome(page: Page, timeout_ms: int) -> bool:
     return False
 
 
-def _wait_for_save_outcome(page: Page, popup_locator, timeout_ms: int) -> Optional[bool]:
+def _wait_for_save_outcome(page: "Page", popup_locator, timeout_ms: int) -> Optional[bool]:
     """Poll for a save outcome after clicking the Save & Close button.
 
     Treats any of the following as success:
@@ -95,7 +96,7 @@ def _wait_for_save_outcome(page: Page, popup_locator, timeout_ms: int) -> Option
     return None
 
 
-def login(page: Page, username: str, password: str) -> bool:
+def login(page: "Page", username: str, password: str) -> bool:
     """Log into MISA Money Keeper.
 
     Fills the username/password fields and submits. If a 2FA/captcha
@@ -128,14 +129,14 @@ def login(page: Page, username: str, password: str) -> bool:
         return False
 
 
-def save_session(context: BrowserContext, path: Union[str, Path] = DEFAULT_STORAGE_STATE_PATH) -> None:
+def save_session(context: "BrowserContext", path: Union[str, Path] = DEFAULT_STORAGE_STATE_PATH) -> None:
     """Persist the browser context's storage_state (cookies/local storage)
     to `path` for reuse on the next run."""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     context.storage_state(path=str(path))
 
 
-def click_import_button(page: Page, timeout_ms: int = POPUP_TIMEOUT_MS) -> bool:
+def click_import_button(page: "Page", timeout_ms: int = POPUP_TIMEOUT_MS) -> bool:
     """Open the Add Transaction popup for a single transaction.
 
     `IMPORT_BUTTON` is an up/down dropdown toggle: clicking it reveals more
@@ -194,7 +195,7 @@ def _tab_selectors(classification: str) -> _TabSelectors:
 
 
 def select_account(
-    page: Page,
+    page: "Page",
     account_name: str,
     account_input: str,
     account_options_container: str,
@@ -221,7 +222,7 @@ def select_account(
 
 
 def _select_category(
-    page: Page, category_name: str, category_input: str, timeout_ms: int = POPUP_TIMEOUT_MS
+    page: "Page", category_name: str, category_input: str, timeout_ms: int = POPUP_TIMEOUT_MS
 ) -> bool:
     """Fill and commit `category_name` in the popup's Category dropdown.
 
@@ -238,7 +239,7 @@ def _select_category(
         return False
 
 
-def _fill_date(page: Page, date_input: str, date_value: str) -> None:
+def _fill_date(page: "Page", date_input: str, date_value: str) -> None:
     """Fill MISA's custom datepicker field and ensure the value sticks.
 
     MISA's datepicker is a Vue-controlled component with two sibling inputs
@@ -275,7 +276,7 @@ def _fill_date(page: Page, date_input: str, date_value: str) -> None:
     page.wait_for_timeout(250)
 
 
-def add_transaction(page: Page, tx: MisaTransaction) -> MisaImportResult:
+def add_transaction(page: "Page", tx: MisaTransaction) -> MisaImportResult:
     """Add one transaction to MISA via the Import popup flow.
 
     Clicks the Import button, selects the Spend or Earn tab, fills

@@ -45,5 +45,23 @@ services:
       APP_ROLE: correlator
       DATABASE_URL: sqlite:////data/txdb.sqlite3
 
+  misa-runner:
+    <<: *service-defaults
+    container_name: tx-misa-runner
+    profiles:
+      - misa
+    environment:
+      APP_ROLE: misa
+      DATABASE_URL: sqlite:////data/txdb.sqlite3
+      MISA_USERNAME: ${MISA_USERNAME:-}
+      MISA_PASSWORD: ${MISA_PASSWORD:-}
+    # MISA runner is a batch job, not a long-running service.
+    restart: "no"
+    command: >
+      python -m app.misa.runner
+      --start-date ${MISA_START_DATE:-}
+      --end-date ${MISA_END_DATE:-}
+      ${MISA_RUNNER_EXTRA_ARGS:-}
+
 volumes:
   sqlite_data:

@@ -5,6 +5,11 @@
 credentials.json
 token.json
 
+# Rotating log file written by app/core/logging.py's get_logger() (used by
+# both the FastAPI app and app/misa/runner.py) - local runtime output only.
+app.log
+app.log.*
+
 # Environment variables for MISA credentials (contains secrets, e.g.
 # MISA_USERNAME/MISA_PASSWORD) — keep these out of the tracked .env.
 .env.misa
