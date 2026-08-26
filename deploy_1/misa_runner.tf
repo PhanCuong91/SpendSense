@@ -173,18 +173,16 @@ resource "aws_security_group" "misa_runner_sg" {
   description = "Security group for the MISA import runner EC2 instance"
   vpc_id      = var.vpc_id
 
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   tags = merge(local.common_tags, {
     Name = "${var.project_name}-misa-runner-sg"
   })
-}
-
-resource "aws_vpc_security_group_egress_rule" "misa_runner_all_outbound" {
-  count             = var.misa_enabled ? 1 : 0
-  security_group_id = aws_security_group.misa_runner_sg[0].id
-  description       = "Allow all outbound traffic to reach MISA, ECR, S3, Secrets Manager, and CloudWatch"
-  ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
-  tags              = local.common_tags
 }
 
 # -----------------------------------------------------------------------------

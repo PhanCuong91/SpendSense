@@ -171,7 +171,7 @@ jobs:
       working-directory: deploy_1
       run: terraform init -input=false
 
-    - name: Import existing secrets if not already tracked in state
+    - name: Import existing secrets and SSM parameters if not already tracked in state
       working-directory: deploy_1
       run: |
         set -euo pipefail
@@ -192,8 +192,29 @@ jobs:
           terraform import "${resource_addr}" "${arn}"
         }
 
+        import_ssm_if_missing() {
+          local resource_addr="$1"
+          local param_name="$2"
+          if terraform state show "${resource_addr}" >/dev/null 2>&1; then
+            echo "${resource_addr} already tracked in state, skipping import."
+            return 0
+          fi
+          local exists
+          exists=$(aws ssm get-parameter --name "${param_name}" --region "${AWS_REGION}" --query 'Parameter.Name' --output text 2>/dev/null || true)
+          if [ -z "${exists}" ] || [ "${exists}" = "None" ]; then
+            echo "${param_name} does not exist yet in SSM, Terraform will create it."
+            return 0
+          fi
+          echo "Importing existing SSM parameter ${param_name} into ${resource_addr}..."
+          terraform import "${resource_addr}" "${param_name}"
+        }
+
         import_if_missing "${AWS_SECRET_NAME}.${AWS_SECRET_RESOURCE_CREDENTIAL}" "${SECRET_CREDENTIAL_NAME}"
         import_if_missing "${AWS_SECRET_NAME}.${AWS_SECRET_RESOURCE_TOKEN}" "${SECRET_TOKEN_NAME}"
+
+        # Import MISA SSM Parameters if they exist in AWS
+        import_ssm_if_missing "aws_ssm_parameter.misa_username[0]" "/spendsense/misa_username"
+        import_ssm_if_missing "aws_ssm_parameter.misa_password[0]" "/spendsense/misa_password"
 
     - name: Terraform Plan (remote state)
       id: tf-plan
