@@ -193,7 +193,7 @@ resource "aws_vpc_security_group_egress_rule" "misa_runner_all_outbound" {
 
 resource "aws_cloudwatch_log_group" "misa_logs" {
   name              = "/ecs/${var.project_name}-misa"
-  retention_in_days = var.misa_log_retention_days
+  retention_in_days = 14
   tags              = local.common_tags
 }
 
