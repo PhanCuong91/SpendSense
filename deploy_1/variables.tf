@@ -188,6 +188,24 @@ variable "misa_key_name" {
 
 variable "misa_root_volume_size" {
   type        = number
-  description = "Root EBS volume size in GiB for the MISA import runner."
-  default     = 20
+  description = "Root EBS volume size in GiB for the MISA import runner. The Amazon Linux 2023 snapshot requires at least 30 GiB."
+  default     = 30
+}
+
+variable "misa_safety_stop_schedule" {
+  type        = string
+  description = "Cron schedule expression (UTC) to forcefully stop the MISA EC2 runner if it has not stopped itself. Defaults to 14:45 UTC (25m after daily ECS stop)."
+  default     = "cron(45 14 * * ? *)"
+}
+
+variable "misa_alarm_email" {
+  type        = string
+  description = "Optional email address to subscribe to MISA import failure and safety alerts via SNS."
+  default     = null
+}
+
+variable "misa_alarm_sns_topic_arn" {
+  type        = string
+  description = "Optional existing SNS topic ARN for alarms. If not specified and misa_enabled is true, an SNS topic is created automatically."
+  default     = null
 }

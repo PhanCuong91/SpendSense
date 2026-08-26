@@ -301,8 +301,7 @@ def add_transaction(page: "Page", tx: MisaTransaction) -> MisaImportResult:
 
         page.wait_for_selector(tab.amount_input, timeout=POPUP_TIMEOUT_MS)
 
-        page.fill(tab.amount_input, str(tx.amount))
-        if not select_account(page, tx.account, tab.account_input, tab.account_options_container):
+        page.fill(tab.amount_input, format_misa_amount(tx.amount))
             return MisaImportResult(
                 success=False, error_message=f"Could not select account {tx.account!r}"
             )

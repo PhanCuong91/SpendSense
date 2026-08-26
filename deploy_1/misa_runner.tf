@@ -346,7 +346,7 @@ resource "archive_file" "misa_start_runner_lambda" {
       import boto3
       import os
 
-      REGION = os.environ["AWS_REGION"]
+      REGION = os.environ["REGION"]
       INSTANCE_ID = os.environ["INSTANCE_ID"]
 
       def handler(event, context):
@@ -369,7 +369,7 @@ resource "aws_lambda_function" "misa_start_runner" {
 
   environment {
     variables = {
-      AWS_REGION  = var.aws_region
+      REGION      = var.aws_region
       INSTANCE_ID = aws_instance.misa_runner[0].id
     }
   }
@@ -401,4 +401,179 @@ resource "aws_s3_bucket_notification" "misa_backup_notification" {
   count       = var.misa_enabled ? 1 : 0
   bucket      = var.db_backup_bucket
   eventbridge = true
+}
+
+# -----------------------------------------------------------------------------
+# Safety stop: EventBridge schedule -> Lambda stop EC2 instance
+# -----------------------------------------------------------------------------
+
+resource "aws_iam_role" "misa_stop_runner_lambda_role" {
+  count = var.misa_enabled ? 1 : 0
+  name  = "${var.project_name}-misa-stop-runner-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "misa_stop_runner_lambda_policy" {
+  count = var.misa_enabled ? 1 : 0
+  name  = "${var.project_name}-misa-stop-runner-lambda-policy"
+  role  = aws_iam_role.misa_stop_runner_lambda_role[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ec2:StopInstances"]
+        Resource = [aws_instance.misa_runner[0].arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+resource "archive_file" "misa_stop_runner_lambda" {
+  count       = var.misa_enabled ? 1 : 0
+  type        = "zip"
+  output_path = "${path.module}/.terraform/misa_stop_runner_lambda.zip"
+
+  source {
+    content  = <<-EOF
+      import json
+      import boto3
+      import os
+
+      REGION = os.environ["REGION"]
+      INSTANCE_ID = os.environ["INSTANCE_ID"]
+
+      def handler(event, context):
+          ec2 = boto3.client("ec2", region_name=REGION)
+          response = ec2.stop_instances(InstanceIds=[INSTANCE_ID])
+          return {
+              "statusCode": 200,
+              "body": json.dumps({"stopped": INSTANCE_ID, "response": str(response)})
+          }
+    EOF
+    filename = "index.py"
+  }
+}
+
+resource "aws_lambda_function" "misa_stop_runner" {
+  count         = var.misa_enabled ? 1 : 0
+  function_name = "${var.project_name}-misa-stop-runner"
+  role          = aws_iam_role.misa_stop_runner_lambda_role[0].arn
+  handler       = "index.handler"
+  runtime       = "python3.13"
+  filename      = archive_file.misa_stop_runner_lambda[0].output_path
+  timeout       = 30
+
+  environment {
+    variables = {
+      REGION      = var.aws_region
+      INSTANCE_ID = aws_instance.misa_runner[0].id
+    }
+  }
+
+  source_code_hash = archive_file.misa_stop_runner_lambda[0].output_base64sha256
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_event_rule" "misa_safety_stop" {
+  count               = var.misa_enabled ? 1 : 0
+  name                = "${var.project_name}-misa-safety-stop"
+  description         = "Forcefully stops the MISA EC2 runner if it has not stopped itself within the execution window"
+  schedule_expression = var.misa_safety_stop_schedule
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_event_target" "misa_safety_stop_lambda" {
+  count = var.misa_enabled ? 1 : 0
+  rule  = aws_cloudwatch_event_rule.misa_safety_stop[0].name
+  arn   = aws_lambda_function.misa_stop_runner[0].arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_safety_stop" {
+  count         = var.misa_enabled ? 1 : 0
+  statement_id  = "AllowExecutionFromEventBridgeSafetyStop"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.misa_stop_runner[0].function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.misa_safety_stop[0].arn
+}
+
+# -----------------------------------------------------------------------------
+# SNS Topic & Notifications
+# -----------------------------------------------------------------------------
+
+resource "aws_sns_topic" "misa_alerts" {
+  count = var.misa_enabled ? 1 : 0
+  name  = "${var.project_name}-misa-alerts"
+  tags  = local.common_tags
+}
+
+resource "aws_sns_topic_subscription" "misa_alerts_email" {
+  count     = var.misa_enabled && var.misa_alarm_email != null ? 1 : 0
+  topic_arn = aws_sns_topic.misa_alerts[0].arn
+  protocol  = "email"
+  endpoint  = var.misa_alarm_email
+}
+
+# -----------------------------------------------------------------------------
+# CloudWatch Metric Filter & Alarm on Import Failures
+# -----------------------------------------------------------------------------
+
+resource "aws_cloudwatch_log_metric_filter" "misa_import_failures" {
+  count          = var.misa_enabled ? 1 : 0
+  name           = "${var.project_name}-misa-import-failures"
+  log_group_name = aws_cloudwatch_log_group.misa_logs.name
+  pattern        = "\"[failed]\""
+
+  metric_transformation {
+    name          = "${var.project_name}-misa-import-failures"
+    namespace     = "${var.project_name}/misa"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+locals {
+  misa_alarm_action_arn = var.misa_alarm_sns_topic_arn != null ? var.misa_alarm_sns_topic_arn : (var.misa_enabled ? aws_sns_topic.misa_alerts[0].arn : null)
+}
+
+resource "aws_cloudwatch_metric_alarm" "misa_import_failed_alarm" {
+  count               = var.misa_enabled ? 1 : 0
+  alarm_name          = "${var.project_name}-misa-import-failed"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = aws_cloudwatch_log_metric_filter.misa_import_failures[0].metric_transformation[0].name
+  namespace           = aws_cloudwatch_log_metric_filter.misa_import_failures[0].metric_transformation[0].namespace
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Triggered when the MISA import runner encounters and logs one or more [failed] transactions"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = local.misa_alarm_action_arn != null ? [local.misa_alarm_action_arn] : []
+  ok_actions    = local.misa_alarm_action_arn != null ? [local.misa_alarm_action_arn] : []
+
+  tags = local.common_tags
 }

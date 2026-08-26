@@ -52,3 +52,14 @@ output "misa_password_secret_arn" {
   description = "ARN of the MISA password secret. Populate the value outside Terraform."
   value       = var.misa_enabled ? aws_secretsmanager_secret.misa_password[0].arn : null
 }
+
+output "misa_alerts_sns_topic_arn" {
+  description = "ARN of the SNS topic for MISA alerts."
+  value       = var.misa_enabled ? aws_sns_topic.misa_alerts[0].arn : null
+}
+
+output "misa_import_failed_alarm_arn" {
+  description = "ARN of the CloudWatch alarm for MISA import failures."
+  value       = var.misa_enabled ? aws_cloudwatch_metric_alarm.misa_import_failed_alarm[0].arn : null
+}
+
