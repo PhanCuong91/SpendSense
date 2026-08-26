@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<!--
+  Static fixture mimicking the real MISA Money Keeper transactions page's
+  DOM, close enough to exercise the selectors in app/misa/selectors.py:
+  IMPORT_BUTTON, SINGLE_TRANSACTION_OPTION, IMPORT_BUTTON_RESULT,
+  POPUP_SPEND_TAB/POPUP_EARN_TAB, the Spend/Earn amount/account/date/
+  category fields (+ their options containers), POPUP_SAVE_AND_ADD_BUTTON,
+  POPUP_SAVE_AND_CLOSE_BUTTON, SUCCESS_INDICATOR, ERROR_INDICATOR.
+
+  Not a real network page - loaded via file:// or Playwright's
+  page.set_content() in tests/test_misa_client.py. A tiny inline script
+  wires up just enough interactivity (dropdown toggle, tab switch, save
+  button behavior) to exercise add_transaction()'s real click/fill flow
+  end-to-end against this fixture instead of the live MISA site.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MISA Money Keeper - Transactions (fixture)</title>
+</head>
+<body>
+  <div id="app-container">
+    <div class="nav-container flex justify-between">
+      <div>
+        <div class="ctn-nav-left flex align-items-center">
+          <p><span>Workspace</span></p>
+        </div>
+      </div>
+    </div>
+    <div class="app-container">
+      <div class="sidebar-container expand-sidebar">
+        <div class="ctn-top">
+          <div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div> <!-- nth-child(5) -->
+              <div>
+                <div> <!-- Import button toggle -->
+                  <div> <!-- nth-child(1): dropdown toggle chain -->
+                    <div>
+                      <div class="menu-item-updown op-icon-chevron-down">Import</div>
+                    </div>
+                  </div>
+                  <div> <!-- nth-child(2): menu options revealed on click -->
+                    <div> <!-- nth-child(1): single-transaction option -->
+                      <div data-fixture-open-popup>Giao dịch đơn lẻ</div>
+                    </div>
+                    <div>Import file</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Background transaction list, used to visually confirm a Save
+       actually persisted a row (real success signal - see
+       misa_selectors.md, SUCCESS_INDICATOR/ERROR_INDICATOR are unconfirmed
+       guesses that never matched even on real successful saves). -->
+  <div class="transactions-list">
+    <span class="total-count" data-fixture-total-count>0</span>
+    <ul data-fixture-rows></ul>
+  </div>
+
+  <div id="app">
+  <div class="modals-container" hidden data-fixture-modal-root>
+    <div>
+      <div class="vfm__container vfm--absolute vfm--inset vfm--outline-none modal-container null">
+        <div>
+          <div class="modal__content flex-column flex1">
+            <div>
+              <div>
+                <div class="flex tab-header">
+                  <div>
+                    <div>
+                      <div>
+                        <div class="ms-tab tabActived" data-fixture-tab="spend">Chi tiền</div>
+                        <div data-fixture-tab="earn">Thu tiền</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="list-tab">
+                  <!-- Spend panel: nth-child(1) of list-tab, with the
+                       inner "div:nth-child(1)" one level deeper, matching
+                       POPUP_AMOUNT_SPEND_INPUT's full path. Visible by
+                       default (Spend is the default active tab). -->
+                  <div data-fixture-panel="spend">
+                    <div>
+                      <div>
+                        <div>
+                          <div> <!-- nth-child(1): Spend panel itself -->
+                            <div class="left">
+                              <div> <!-- nth-child(1): amount -->
+                                <div class="p-t-8">
+                                  <div>
+                                    <div>
+                                      <input type="text" data-fixture-field="spend-amount" />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div> <!-- nth-child(2): account -->
+                                <div class="p-t-8">
+                                  <div>
+                                    <div class="input-container">
+                                      <input type="text" data-fixture-field="spend-account" />
+                                    </div>
+                                    <div class="dropdown-container" hidden>
+                                      <div data-fixture-account-options="spend">
+                                        <div>Helper</div>
+                                        <div>Cash</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div> <!-- nth-child(3): date -->
+                                <div>
+                                  <div>
+                                    <input type="text" placeholder="dd/mm/yyyy hh:mm" data-fixture-field="spend-date" />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div class="right">
+                              <div> <!-- nth-child(1): category -->
+                                <div class="p-t-8 categories">
+                                  <div>
+                                    <div class="input-container">
+                                      <input type="text" data-fixture-field="spend-category" />
+                                    </div>
+                                    <div class="dropdown-container" hidden>
+                                      <div data-fixture-category-options="spend">
+                                        <div>Bars &amp; Coffee</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <!--
+                    Earn panel: nth-child(2) of list-tab directly IS the
+                    panel (sibling of Spend's outer wrapper, not nested
+                    inside it) - matches POPUP_AMOUNT_EARN_INPUT's
+                    shallower path. Hidden (not removed) by default, same
+                    as real MISA (both tab panels stay mounted, toggled via
+                    v-show). A leading empty placeholder sibling (below)
+                    pushes the real content to be the 2nd child at that
+                    depth - this is required so that
+                    POPUP_SPEND_TAB/POPUP_AMOUNT_SPEND_INPUT's own
+                    "div:nth-child(1) > div.left" requirement can't also
+                    resolve by accident inside this (Earn) subtree, since
+                    the real "div.left/div.right" holder here is NOT its
+                    parent's first child.
+                  -->
+                  <div hidden data-fixture-panel="earn">
+                    <div>
+                      <div>
+                        <div>
+                          <div></div> <!-- nth-child(1): empty disambiguation placeholder -->
+                          <div> <!-- nth-child(2): the real Earn panel content -->
+                            <div class="left">
+                              <div> <!-- nth-child(1): amount -->
+                                <div class="p-t-8">
+                                  <div>
+                                    <input type="text" data-fixture-field="earn-amount" />
+                                  </div>
+                                </div>
+                              </div>
+                              <div> <!-- nth-child(2): account -->
+                                <div class="p-t-8">
+                                  <div>
+                                    <div>
+                                      <input type="text" data-fixture-field="earn-account" />
+                                    </div>
+                                    <div class="dropdown-container" hidden>
+                                      <div data-fixture-account-options="earn">
+                                        <div>Helper</div>
+                                        <div>Cash</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div> <!-- nth-child(3): date -->
+                                <div>
+                                  <div>
+                                    <input type="text" placeholder="dd/mm/yyyy hh:mm" data-fixture-field="earn-date" />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div class="right">
+                              <div> <!-- nth-child(1): category -->
+                                <div class="p-t-8 categories">
+                                  <div>
+                                    <div>
+                                      <input type="text" data-fixture-field="earn-category" />
+                                    </div>
+                                    <div class="dropdown-container" hidden>
+                                      <div data-fixture-category-options="earn">
+                                        <div>Balance</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal__footer">
+            <div>
+              <div class="footer-button">
+                <button
+                  type="button"
+                  class="ms-button btn pos-relative primary-outline primary-outline"
+                  data-fixture-save="add"
+                >Lưu và thêm</button>
+                <button
+                  type="button"
+                  class="ms-button btn pos-relative primary"
+                  data-fixture-save="close"
+                >Lưu</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="popup-error-message" hidden data-fixture-error-indicator>
+    Vui lòng nhập đầy đủ thông tin
+  </div>
+  <div hidden data-fixture-success-indicator>Saved successfully</div>
+
+  <script>
+    // Test-only wiring, not present in the real MISA app - just enough
+    // interactivity to exercise add_transaction()'s real click/fill/click
+    // flow against this fixture (dropdown-toggle-then-click-option for
+    // Account/Category, tab switching, and distinguishing the two Save
+    // buttons), matching the behaviors confirmed live against the real
+    // site in misa_selectors.md.
+    document.querySelector('[data-fixture-open-popup]').addEventListener('click', () => {
+      document.querySelector('[data-fixture-modal-root]').hidden = false;
+    });
+
+    document.querySelectorAll('[data-fixture-tab]').forEach((tabEl) => {
+      tabEl.addEventListener('click', () => {
+        const which = tabEl.getAttribute('data-fixture-tab');
+        document.querySelectorAll('[data-fixture-tab]').forEach((t) => t.classList.remove('ms-tab', 'tabActived'));
+        tabEl.classList.add('ms-tab', 'tabActived');
+        const listTab = document.querySelector('.list-tab');
+        listTab.children[0].hidden = which !== 'spend';
+        listTab.children[1].hidden = which !== 'earn';
+      });
+    });
+
+    document.querySelectorAll('[data-fixture-field$="-account"]').forEach((input) => {
+      input.addEventListener('click', () => {
+        input.closest('.p-t-8').querySelector('.dropdown-container').hidden = false;
+      });
+    });
+    document.querySelectorAll('[data-fixture-account-options] div').forEach((opt) => {
+      opt.addEventListener('click', () => {
+        const input = opt.closest('.p-t-8').querySelector('input');
+        input.value = opt.textContent;
+        opt.closest('.dropdown-container').hidden = true;
+      });
+    });
+
+    document.querySelectorAll('[data-fixture-field$="-category"]').forEach((input) => {
+      input.addEventListener('input', () => {
+        input.closest('.p-t-8').querySelector('.dropdown-container').hidden = false;
+      });
+    });
+    document.querySelectorAll('[data-fixture-category-options] div').forEach((opt) => {
+      opt.addEventListener('click', () => {
+        const input = opt.closest('.p-t-8').querySelector('input');
+        input.value = opt.textContent;
+        input.setAttribute('data-fixture-category-selected', 'true');
+        opt.closest('.dropdown-container').hidden = true;
+      });
+    });
+
+    document.querySelectorAll('[data-fixture-save]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const activePanel = document.querySelector('[data-fixture-panel="spend"]').hidden
+          ? 'earn' : 'spend';
+        const amount = document.querySelector(`[data-fixture-field="${activePanel}-amount"]`).value;
+        const account = document.querySelector(`[data-fixture-field="${activePanel}-account"]`).value;
+        const categoryInput = document.querySelector(`[data-fixture-field="${activePanel}-category"]`);
+        const categorySelected = categoryInput.getAttribute('data-fixture-category-selected') === 'true';
+        const errorEl = document.querySelector('[data-fixture-error-indicator]');
+        const successEl = document.querySelector('[data-fixture-success-indicator]');
+        if (!amount || !account || !categorySelected) {
+          errorEl.hidden = false;
+          successEl.hidden = true;
+          return;
+        }
+        errorEl.hidden = true;
+        successEl.hidden = false;
+        const rows = document.querySelector('[data-fixture-rows]');
+        const li = document.createElement('li');
+        li.textContent = `${amount}`;
+        rows.appendChild(li);
+        const countEl = document.querySelector('[data-fixture-total-count]');
+        countEl.textContent = String(rows.children.length);
+        if (btn.getAttribute('data-fixture-save') === 'close') {
+          document.querySelector('[data-fixture-modal-root]').hidden = true;
+        } else {
+          document.querySelector('[data-fixture-field="spend-amount"]').value = '';
+          document.querySelector('[data-fixture-field="earn-amount"]').value = '';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

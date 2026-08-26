@@ -27,3 +27,39 @@ output "gmail_token_secret_arn" {
   description = "ARN of the created Gmail token secret."
   value       = aws_secretsmanager_secret.gmail_token.arn
 }
+
+output "misa_runner_instance_id" {
+  description = "ID of the MISA import runner EC2 instance."
+  value       = var.misa_enabled ? aws_instance.misa_runner[0].id : null
+}
+
+output "misa_runner_security_group_id" {
+  description = "Security group ID of the MISA import runner."
+  value       = var.misa_enabled ? aws_security_group.misa_runner_sg[0].id : null
+}
+
+output "misa_log_group_name" {
+  description = "CloudWatch log group for the MISA import runner."
+  value       = aws_cloudwatch_log_group.misa_logs.name
+}
+
+output "misa_username_secret_arn" {
+  description = "ARN of the MISA username secret. Populate the value outside Terraform."
+  value       = var.misa_enabled ? aws_secretsmanager_secret.misa_username[0].arn : null
+}
+
+output "misa_password_secret_arn" {
+  description = "ARN of the MISA password secret. Populate the value outside Terraform."
+  value       = var.misa_enabled ? aws_secretsmanager_secret.misa_password[0].arn : null
+}
+
+output "misa_alerts_sns_topic_arn" {
+  description = "ARN of the SNS topic for MISA alerts."
+  value       = var.misa_enabled ? aws_sns_topic.misa_alerts[0].arn : null
+}
+
+output "misa_import_failed_alarm_arn" {
+  description = "ARN of the CloudWatch alarm for MISA import failures."
+  value       = var.misa_enabled ? aws_cloudwatch_metric_alarm.misa_import_failed_alarm[0].arn : null
+}
+

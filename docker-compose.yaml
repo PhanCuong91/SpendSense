@@ -12,7 +12,7 @@ x-service-defaults: &service-defaults
   restart: unless-stopped
   init: true
   volumes:
-    - sqlite_data:/data
+    - ./data:/app/data
 
 services:
   api:
@@ -20,7 +20,7 @@ services:
     container_name: tx-api
     environment:
       APP_ROLE: api
-      DATABASE_URL: sqlite:////data/txdb.sqlite3
+      DATABASE_URL: sqlite:////app/data/txdb.sqlite3
       TZ: Asia/Singapore
     ports:
       - "8000:8000"
@@ -36,14 +36,36 @@ services:
     container_name: tx-poller
     environment:
       APP_ROLE: poller
-      DATABASE_URL: sqlite:////data/txdb.sqlite3
+      DATABASE_URL: sqlite:////app/data/txdb.sqlite3
 
   correlator-worker:
     <<: *service-defaults
     container_name: tx-correlator
     environment:
       APP_ROLE: correlator
-      DATABASE_URL: sqlite:////data/txdb.sqlite3
+      DATABASE_URL: sqlite:////app/data/txdb.sqlite3
+
+  misa-runner:
+    <<: *service-defaults
+    container_name: tx-misa-runner
+    profiles:
+      - misa
+    env_file:
+      - .env
+      - path: .env.misa
+        required: false
+    environment:
+      APP_ROLE: misa
+      DATABASE_URL: sqlite:////app/data/txdb.sqlite3
+      MISA_USERNAME: ${MISA_USERNAME:-}
+      MISA_PASSWORD: ${MISA_PASSWORD:-}
+    # MISA runner is a batch job, not a long-running service.
+    restart: "no"
+    command: >
+      python -m app.misa.runner
+      --start-date ${MISA_START_DATE:-}
+      --end-date ${MISA_END_DATE:-}
+      ${MISA_RUNNER_EXTRA_ARGS:-}
 
 volumes:
   sqlite_data:

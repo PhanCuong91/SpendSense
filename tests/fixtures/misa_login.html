@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<!--
+  Static fixture mimicking the real MISA Money Keeper login page's DOM,
+  close enough to exercise the selectors in app/misa/selectors.py
+  (LOGIN_USERNAME_INPUT, LOGIN_PASSWORD_INPUT, LOGIN_SUBMIT_BUTTON,
+  LOGIN_ERROR_INDICATOR). Not a real network page - loaded via file://
+  or Playwright's page.set_content() in tests/test_misa_client.py.
+
+  Toggle the error message and/or "logged in" nav bar by adding the
+  `show-error` / `logged-in` class to <body> (see the tiny inline script
+  at the bottom), so a single fixture can drive both the success and
+  failure login test cases.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MISA Money Keeper - Sign in (fixture)</title>
+</head>
+<body>
+  <div id="app">
+    <div>
+      <div class="content-full">
+        <div>
+          <div class="content-signin">
+            <div class="content-right">
+              <div class="content-form">
+                <div id="username" class="ms-input ms-editor">
+                  <input type="text" name="username" />
+                </div>
+                <div id="password" class="ms-input ms-editor">
+                  <input type="password" name="password" />
+                </div>
+                <div class="error-message" data-fixture-error>
+                  Sai tên đăng nhập hoặc mật khẩu
+                </div>
+                <button type="submit">Đăng nhập</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!--
+    Nav bar element used by LOGIN_SUCCESS_INDICATOR - real MISA only
+    renders this after a successful login/redirect, so it's included here
+    but hidden by default (`logged-in` body class reveals it) to let a
+    single fixture drive both outcomes without a second file.
+  -->
+  <div id="app-container" hidden>
+    <div class="nav-container flex justify-between">
+      <div>
+        <div class="ctn-nav-left flex align-items-center">
+          <p><span>Workspace</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Test-only toggles, not present in the real MISA app.
+    if (document.body.classList.contains("show-error")) {
+      document.querySelector("[data-fixture-error]").style.display = "block";
+    } else {
+      document.querySelector("[data-fixture-error]").style.display = "none";
+    }
+    if (document.body.classList.contains("logged-in")) {
+      document.getElementById("app-container").hidden = false;
+    }
+
+    // Test-only submit handler: exercises client.login()'s real fill/click
+    // flow end-to-end (tests/test_misa_client.py) instead of only the
+    // static body-class toggles above. Any credentials other than the
+    // fixture's known-good pair are treated as a failed login, matching
+    // real MISA's "Sai tên đăng nhập hoặc mật khẩu" behavior.
+    const FIXTURE_VALID_USERNAME = "fixture_user";
+    const FIXTURE_VALID_PASSWORD = "fixture_pass";
+    document.querySelector("button[type=submit]").addEventListener("click", (event) => {
+      event.preventDefault();
+      const username = document.querySelector("#username input").value;
+      const password = document.querySelector("#password input").value;
+      const errorEl = document.querySelector("[data-fixture-error]");
+      const appContainer = document.getElementById("app-container");
+      if (username === FIXTURE_VALID_USERNAME && password === FIXTURE_VALID_PASSWORD) {
+        errorEl.style.display = "none";
+        appContainer.hidden = false;
+      } else {
+        errorEl.style.display = "block";
+        appContainer.hidden = true;
+      }
+    });
+  </script>
+</body>
+</html>

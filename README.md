@@ -747,6 +747,30 @@ python -m app.workers.poller_worker
 python -m app.workers.parser_worker
 python -m app.workers.correlator_worker
 
+Import into MISA Money Keeper:
+Create `app/.env.misa` with MISA credentials (this file is gitignored):
+
+    MISA_USERNAME=your_username
+    MISA_PASSWORD=your_password
+
+Run a dry-run first to preview what would be imported:
+
+    python -m app.misa.runner --start-date 2026-07-17 --end-date 2026-07-17 --dry-run
+
+Perform the actual import (headless browser):
+
+    python -m app.misa.runner --start-date 2026-07-17 --end-date 2026-07-17
+
+Useful options:
+
+    --headed              show the browser window
+    --limit N             import at most N rows
+    --state-file PATH     custom dedup state JSON path (default: misa.storage_state.json)
+
+The runner reads parsed Spend/Earn candidates from `data/txdb.sqlite3`, maps
+them to MISA accounts/categories, and skips any row already recorded in the
+dedup state file so re-imports are safe.
+
 reset db
 bash scripts/dev_reset.sh
 
