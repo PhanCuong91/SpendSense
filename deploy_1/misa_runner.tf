@@ -27,23 +27,37 @@ locals {
 }
 
 # -----------------------------------------------------------------------------
-# Secrets
+# SSM Parameter Store (Free tier)
 # -----------------------------------------------------------------------------
 
-resource "aws_secretsmanager_secret" "misa_username" {
-  count = var.misa_enabled ? 1 : 0
-  name  = "${var.project_name}_misa_username"
-  tags  = local.common_tags
+resource "aws_ssm_parameter" "misa_username" {
+  count       = var.misa_enabled ? 1 : 0
+  name        = "/${var.project_name}/misa_username"
+  description = "MISA Money Keeper login username / email"
+  type        = "SecureString"
+  value       = "placeholder"
+  tags        = local.common_tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
-resource "aws_secretsmanager_secret" "misa_password" {
-  count = var.misa_enabled ? 1 : 0
-  name  = "${var.project_name}_misa_password"
-  tags  = local.common_tags
+resource "aws_ssm_parameter" "misa_password" {
+  count       = var.misa_enabled ? 1 : 0
+  name        = "/${var.project_name}/misa_password"
+  description = "MISA Money Keeper login password"
+  type        = "SecureString"
+  value       = "placeholder"
+  tags        = local.common_tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 # Values are populated manually outside Terraform so they do not end up in
-# Terraform state. The secret ARNs are passed to the EC2 user-data script.
+# Terraform state. The parameter names are passed to the EC2 user-data script.
 
 # -----------------------------------------------------------------------------
 # IAM
@@ -100,14 +114,15 @@ resource "aws_iam_role_policy" "misa_runner_policy" {
         }
       },
       {
-        Sid    = "SecretsManagerRead"
+        Sid    = "SSMParameterRead"
         Effect = "Allow"
         Action = [
-          "secretsmanager:GetSecretValue"
+          "ssm:GetParameter",
+          "ssm:GetParameters"
         ]
         Resource = [
-          aws_secretsmanager_secret.misa_username[0].arn,
-          aws_secretsmanager_secret.misa_password[0].arn
+          aws_ssm_parameter.misa_username[0].arn,
+          aws_ssm_parameter.misa_password[0].arn
         ]
       },
       {
@@ -158,14 +173,18 @@ resource "aws_security_group" "misa_runner_sg" {
   description = "Security group for the MISA import runner EC2 instance"
   vpc_id      = var.vpc_id
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-misa-runner-sg"
+  })
+}
 
-  tags = local.common_tags
+resource "aws_vpc_security_group_egress_rule" "misa_runner_all_outbound" {
+  count             = var.misa_enabled ? 1 : 0
+  security_group_id = aws_security_group.misa_runner_sg[0].id
+  description       = "Allow all outbound traffic to reach MISA, ECR, S3, Secrets Manager, and CloudWatch"
+  ip_protocol       = "-1"
+  cidr_ipv4         = "0.0.0.0/0"
+  tags              = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -174,7 +193,7 @@ resource "aws_security_group" "misa_runner_sg" {
 
 resource "aws_cloudwatch_log_group" "misa_logs" {
   name              = "/ecs/${var.project_name}-misa"
-  retention_in_days = 14
+  retention_in_days = var.misa_log_retention_days
   tags              = local.common_tags
 }
 
@@ -190,8 +209,8 @@ locals {
     bucket              = var.db_backup_bucket
     db_key              = var.db_backup_key
     image               = "${aws_ecr_repository.app.repository_url}:${var.app_image_tag}"
-    username_secret_arn = aws_secretsmanager_secret.misa_username[0].arn
-    password_secret_arn = aws_secretsmanager_secret.misa_password[0].arn
+    username_param_name = aws_ssm_parameter.misa_username[0].name
+    password_param_name = aws_ssm_parameter.misa_password[0].name
     log_group           = aws_cloudwatch_log_group.misa_logs.name
   }) : ""
 }

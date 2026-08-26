@@ -10,8 +10,8 @@ DB_KEY="${db_key}"
 DB_DIR="/mnt/data"
 DB_PATH="$DB_DIR/$DB_KEY"
 IMAGE="${image}"
-USERNAME_SECRET_ARN="${username_secret_arn}"
-PASSWORD_SECRET_ARN="${password_secret_arn}"
+USERNAME_PARAM_NAME="${username_param_name}"
+PASSWORD_PARAM_NAME="${password_param_name}"
 LOG_GROUP="${log_group}"
 
 INSTANCE_ID=$(curl -sf http://169.254.169.254/latest/meta-data/instance-id)
@@ -53,8 +53,8 @@ docker run --rm \
   --log-opt "awslogs-stream-prefix=misa" \
   -e APP_ROLE=misa \
   -e DATABASE_URL=sqlite:///./data/txdb.sqlite3 \
-  -e MISA_USERNAME_SECRET_ARN="$USERNAME_SECRET_ARN" \
-  -e MISA_PASSWORD_SECRET_ARN="$PASSWORD_SECRET_ARN" \
+  -e MISA_USERNAME_PARAM_NAME="$USERNAME_PARAM_NAME" \
+  -e MISA_PASSWORD_PARAM_NAME="$PASSWORD_PARAM_NAME" \
   -v "$DB_DIR:/app/data" \
   "$IMAGE" \
   python -m app.misa.runner --start-date "$START_DATE" --end-date "$END_DATE"

@@ -34,7 +34,7 @@ from app.core.logging import get_logger
 from app.misa import client, selectors
 from app.misa.mapper import CATEGORY, EARN_CATEGORY, to_misa_transaction
 from app.misa.models import MisaImportResult, MisaTransaction
-from app.misa.runner import _resolve_secret
+from app.misa.runner import _resolve_secret, _resolve_ssm_param
 
 load_dotenv(".env.misa")
 logger = get_logger(__name__)
@@ -106,8 +106,16 @@ def parse_args() -> argparse.ArgumentParser:
 
 
 def get_credentials() -> Tuple[Optional[str], Optional[str]]:
-    username = os.environ.get("MISA_USERNAME") or _resolve_secret("MISA_USERNAME_SECRET_ARN")
-    password = os.environ.get("MISA_PASSWORD") or _resolve_secret("MISA_PASSWORD_SECRET_ARN")
+    username = (
+        os.environ.get("MISA_USERNAME")
+        or _resolve_ssm_param("MISA_USERNAME_PARAM_NAME")
+        or _resolve_secret("MISA_USERNAME_SECRET_ARN")
+    )
+    password = (
+        os.environ.get("MISA_PASSWORD")
+        or _resolve_ssm_param("MISA_PASSWORD_PARAM_NAME")
+        or _resolve_secret("MISA_PASSWORD_SECRET_ARN")
+    )
     return username, password
 
 

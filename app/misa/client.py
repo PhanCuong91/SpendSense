@@ -5,6 +5,7 @@ behavior of each function.
 """
 
 import logging
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, Optional, Union
 
@@ -27,6 +28,14 @@ POPUP_TIMEOUT_MS = 10_000
 # default overwrites whatever account was selected. Wait this long after
 # the popup opens before interacting with the account field.
 POPUP_ACCOUNT_SETTLE_MS = 2_500
+
+
+def format_misa_amount(amount: Union[float, Decimal, int, str]) -> str:
+    """Format amount for MISA Web input using Vietnamese number format (, for decimal)."""
+    d = Decimal(str(amount))
+    if d % 1 == 0:
+        return str(int(d))
+    return f"{d:f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
 def is_logged_in(page: "Page") -> bool:
@@ -302,6 +311,7 @@ def add_transaction(page: "Page", tx: MisaTransaction) -> MisaImportResult:
         page.wait_for_selector(tab.amount_input, timeout=POPUP_TIMEOUT_MS)
 
         page.fill(tab.amount_input, format_misa_amount(tx.amount))
+        if not select_account(page, tx.account, tab.account_input, tab.account_options_container):
             return MisaImportResult(
                 success=False, error_message=f"Could not select account {tx.account!r}"
             )

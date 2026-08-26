@@ -43,14 +43,14 @@ output "misa_log_group_name" {
   value       = aws_cloudwatch_log_group.misa_logs.name
 }
 
-output "misa_username_secret_arn" {
-  description = "ARN of the MISA username secret. Populate the value outside Terraform."
-  value       = var.misa_enabled ? aws_secretsmanager_secret.misa_username[0].arn : null
+output "misa_username_ssm_param_name" {
+  description = "Name of the MISA username SSM parameter. Populate the value outside Terraform."
+  value       = var.misa_enabled ? aws_ssm_parameter.misa_username[0].name : null
 }
 
-output "misa_password_secret_arn" {
-  description = "ARN of the MISA password secret. Populate the value outside Terraform."
-  value       = var.misa_enabled ? aws_secretsmanager_secret.misa_password[0].arn : null
+output "misa_password_ssm_param_name" {
+  description = "Name of the MISA password SSM parameter. Populate the value outside Terraform."
+  value       = var.misa_enabled ? aws_ssm_parameter.misa_password[0].name : null
 }
 
 output "misa_alerts_sns_topic_arn" {
