@@ -183,19 +183,25 @@ Required actions:
 
 ## 6. Notes
 
-- `deploy_1/misa_runner.tf` creates `aws_secretsmanager_secret` resources for
-  `misa_username` and `misa_password`, but intentionally does **not** set their
-  values. This keeps real credentials out of Terraform state and the repo.
-- After `terraform apply`, set the secret values via AWS CLI:
+- `deploy_1/misa_runner.tf` creates `aws_ssm_parameter` resources for
+  `misa_username` and `misa_password` (Free Tier SecureString), but intentionally does **not** manage their
+  values. This keeps real credentials out of Terraform state and the repo with zero monthly cost.
+- After `terraform apply`, set the parameter values via AWS CLI:
   ```bash
-  aws secretsmanager put-secret-value \
-    --secret-id spendsense_misa_username \
-    --secret-string "YOUR_MISA_USERNAME"
+  aws ssm put-parameter \
+    --name "/spendsense/misa_username" \
+    --value "YOUR_MISA_USERNAME" \
+    --type SecureString \
+    --overwrite \
+    --region ap-southeast-1
 
-  aws secretsmanager put-secret-value \
-    --secret-id spendsense_misa_password \
-    --secret-string "YOUR_MISA_PASSWORD"
+  aws ssm put-parameter \
+    --name "/spendsense/misa_password" \
+    --value "YOUR_MISA_PASSWORD" \
+    --type SecureString \
+    --overwrite \
+    --region ap-southeast-1
   ```
-- The EC2 user-data script passes the secret ARNs via
-  `MISA_USERNAME_SECRET_ARN` and `MISA_PASSWORD_SECRET_ARN` environment
+- The EC2 user-data script passes the parameter names via
+  `MISA_USERNAME_PARAM_NAME` and `MISA_PASSWORD_PARAM_NAME` environment
   variables, and `app/misa/runner.py` resolves them at runtime.

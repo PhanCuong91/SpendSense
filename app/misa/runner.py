@@ -119,6 +119,20 @@ def _run_dry(planned: List[PlannedRow], considered: int, skipped: int) -> int:
     return 0
 
 
+def _resolve_ssm_param(param_env_var: str) -> Optional[str]:
+    """Resolve a value from AWS Systems Manager (SSM) Parameter Store.
+
+    Falls back to None so plain environment variables remain the default for
+    local development.
+    """
+    param_name = os.environ.get(param_env_var)
+    if not param_name:
+        return None
+    import boto3
+
+    return boto3.client("ssm").get_parameter(Name=param_name, WithDecryption=True)["Parameter"]["Value"]
+
+
 def _resolve_secret(arn_env_var: str) -> Optional[str]:
     """Resolve a value from AWS Secrets Manager when its ARN is provided.
 
@@ -134,24 +148,35 @@ def _resolve_secret(arn_env_var: str) -> Optional[str]:
 
 
 def _run_import(planned: List[PlannedRow], considered: int, skipped: int, dedup_store: DedupStore, headed: bool) -> int:
-    username = os.environ.get("MISA_USERNAME") or _resolve_secret("MISA_USERNAME_SECRET_ARN")
-    password = os.environ.get("MISA_PASSWORD") or _resolve_secret("MISA_PASSWORD_SECRET_ARN")
+    username = (
+        os.environ.get("MISA_USERNAME")
+        or _resolve_ssm_param("MISA_USERNAME_PARAM_NAME")
+        or _resolve_secret("MISA_USERNAME_SECRET_ARN")
+    )
+    password = (
+        os.environ.get("MISA_PASSWORD")
+        or _resolve_ssm_param("MISA_PASSWORD_PARAM_NAME")
+        or _resolve_secret("MISA_PASSWORD_SECRET_ARN")
+    )
     if not username or not password:
         logger.error(
             "MISA_USERNAME and MISA_PASSWORD must be set (see .env.misa), "
-            "or their ARNs must be provided via MISA_USERNAME_SECRET_ARN / "
-            "MISA_PASSWORD_SECRET_ARN"
+            "or provided via MISA_USERNAME_PARAM_NAME / MISA_PASSWORD_PARAM_NAME (SSM) "
+            "or MISA_USERNAME_SECRET_ARN / MISA_PASSWORD_SECRET_ARN (Secrets Manager)"
         )
         return 1
 
     # Import Playwright only when actually launching a browser. This keeps the
     # Docker image free of the heavy playwright/Chromium dependency.
-    from playwright.sync_api import sync_playwright as _sync_playwright
+    sync_pw = getattr(sys.modules[__name__], "sync_playwright", None)
+    if sync_pw is None:
+        from playwright.sync_api import sync_playwright as _sync_playwright
+        sync_pw = _sync_playwright
 
     imported = 0
     failed = 0
 
-    with _sync_playwright() as p:
+    with sync_pw() as p:
         browser = p.chromium.launch(headless=not headed)
         try:
             storage_state_path = client.DEFAULT_STORAGE_STATE_PATH

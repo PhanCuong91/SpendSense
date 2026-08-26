@@ -289,6 +289,36 @@ def test_credentials_are_never_logged(monkeypatch, db_session, log_records):
     assert "supersecretpassword123" not in all_messages
 
 
+def test_resolve_ssm_param_when_env_vars_missing(monkeypatch, db_session):
+    row, classification, tx = _planned_row(db_session, 1.0)
+
+    monkeypatch.delenv("MISA_USERNAME", raising=False)
+    monkeypatch.delenv("MISA_PASSWORD", raising=False)
+    monkeypatch.setenv("MISA_USERNAME_PARAM_NAME", "/spendsense/misa_username")
+    monkeypatch.setenv("MISA_PASSWORD_PARAM_NAME", "/spendsense/misa_password")
+
+    resolved_params = {}
+
+    def _fake_resolve_ssm(param_env_var: str):
+        val = {"MISA_USERNAME_PARAM_NAME": "ssm_user", "MISA_PASSWORD_PARAM_NAME": "ssm_pass"}.get(param_env_var)
+        resolved_params[param_env_var] = val
+        return val
+
+    monkeypatch.setattr(runner, "_resolve_ssm_param", _fake_resolve_ssm)
+    monkeypatch.setattr(runner.client, "is_logged_in", lambda page: True)
+    monkeypatch.setattr(runner.client, "login", lambda page, username, password: True)
+    monkeypatch.setattr(runner.client, "save_session", lambda ctx, path=None: None)
+    monkeypatch.setattr(runner.client, "add_transaction", lambda page, tx: MisaImportResult(success=True))
+    monkeypatch.setattr(runner, "sync_playwright", _fake_sync_playwright_factory())
+
+    dedup_store = DedupStore(db=db_session)
+    exit_code = runner._run_import([(row, classification, tx)], considered=1, skipped=0, dedup_store=dedup_store, headed=False)
+
+    assert exit_code == 0
+    assert resolved_params["MISA_USERNAME_PARAM_NAME"] == "ssm_user"
+    assert resolved_params["MISA_PASSWORD_PARAM_NAME"] == "ssm_pass"
+
+
 def test_gitignore_covers_misa_secrets_and_session_state():
     repo_root = Path(runner.__file__).resolve().parents[2]
     content = (repo_root / ".gitignore").read_text()
@@ -296,3 +326,4 @@ def test_gitignore_covers_misa_secrets_and_session_state():
     assert ".env.misa" in content
     assert "storage_state.json" in content
     assert "app.log" in content
+
