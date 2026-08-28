@@ -68,6 +68,6 @@ else
   echo "Import failed with exit code $RUN_EXIT; NOT uploading DB"
 fi
 
-# Stop this instance regardless of import outcome. Failed rows remain
-# unmarked in misa_import_state and will be retried on the next run.
-aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID"
+# Terminate this instance and delete its temporary EBS volume regardless of outcome.
+# Failed rows remain unmarked in misa_import_state and will be retried on the next run.
+aws ec2 terminate-instances --region "$REGION" --instance-ids "$INSTANCE_ID"

@@ -293,7 +293,7 @@ resource "aws_ecs_task_definition" "app_task" {
       command = [
         "/bin/sh",
         "-c",
-        "mkdir -p ${var.db_mount_path} && if [ ! -f ${var.db_mount_path}/txdb.sqlite3 ] || [ ! -s ${var.db_mount_path}/txdb.sqlite3 ]; then python - <<'PY'\nimport os\nimport boto3\nfrom botocore.config import Config\nfrom pathlib import Path\n\nbucket = '${var.db_backup_bucket}'\nkey = '${var.db_backup_key}'\ndest = Path('${var.db_mount_path}') / 'txdb.sqlite3'\ndest.parent.mkdir(parents=True, exist_ok=True)\ns3 = boto3.client('s3', config=Config(signature_version='s3v4'))\ns3.download_file(bucket, key, str(dest))\nPY\nfi && exec python -m app.workers.poller_worker --host 0.0.0.0 --port 8000"
+        "mkdir -p ${var.db_mount_path} && if [ ! -f ${var.db_mount_path}/txdb.sqlite3 ] || [ ! -s ${var.db_mount_path}/txdb.sqlite3 ]; then python - <<'PY'\nimport os\nimport boto3\nfrom botocore.config import Config\nfrom pathlib import Path\n\nbucket = '${var.db_backup_bucket}'\nkey = '${var.db_backup_key}'\ndest = Path('${var.db_mount_path}') / 'txdb.sqlite3'\ndest.parent.mkdir(parents=True, exist_ok=True)\ns3 = boto3.client('s3', config=Config(signature_version='s3v4'))\ntry:\n    s3.download_file(bucket, key, str(dest))\n    print(f'Successfully downloaded {key} from {bucket}')\nexcept Exception as e:\n    print(f'S3 download skipped or file not found: {e}. Fresh database will be created.')\nPY\nfi && exec python -m app.workers.poller_worker --host 0.0.0.0 --port 8000"
       ]
 
       mountPoints = [

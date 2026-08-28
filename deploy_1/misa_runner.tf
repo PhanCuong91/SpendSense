@@ -101,9 +101,10 @@ resource "aws_iam_role_policy" "misa_runner_policy" {
         Resource = "arn:aws:s3:::${var.db_backup_bucket}/${var.db_backup_key}"
       },
       {
-        Sid    = "EC2SelfStop"
+        Sid    = "EC2SelfTerminate"
         Effect = "Allow"
         Action = [
+          "ec2:TerminateInstances",
           "ec2:StopInstances"
         ]
         Resource = "arn:aws:ec2:*:*:instance/*"
@@ -198,7 +199,7 @@ resource "aws_cloudwatch_log_group" "misa_logs" {
 # Always create the log group so outputs are stable even when misa_enabled=false.
 
 # -----------------------------------------------------------------------------
-# EC2 instance
+# EC2 Launch Template (Ephemeral On-Demand Runner)
 # -----------------------------------------------------------------------------
 
 locals {
@@ -213,38 +214,57 @@ locals {
   }) : ""
 }
 
-resource "aws_instance" "misa_runner" {
-  count                  = var.misa_enabled ? 1 : 0
-  ami                    = local.misa_ami_id
-  instance_type          = var.misa_instance_type
-  subnet_id              = var.misa_subnet_id
-  vpc_security_group_ids = [aws_security_group.misa_runner_sg[0].id]
-  iam_instance_profile   = aws_iam_instance_profile.misa_runner_profile[0].name
-  key_name               = var.misa_key_name
-  user_data              = local.misa_runner_user_data
+resource "aws_launch_template" "misa_runner" {
+  count       = var.misa_enabled ? 1 : 0
+  name_prefix = "${var.project_name}-misa-runner-"
+  description = "Launch template for on-demand ephemeral MISA import runner"
 
-  # Associate a public IP so the instance can reach MISA, ECR, S3, Secrets
-  # Manager, and CloudWatch without a NAT Gateway.
-  associate_public_ip_address = true
+  image_id      = local.misa_ami_id
+  instance_type = var.misa_instance_type
+  key_name      = var.misa_key_name
 
-  # Instance is created in the stopped state. It is started by EventBridge
-  # when a fresh txdb.sqlite3 is uploaded to S3.
-  instance_initiated_shutdown_behavior = "stop"
-
-  root_block_device {
-    volume_size           = var.misa_root_volume_size
-    volume_type           = "gp3"
-    encrypted             = true
-    delete_on_termination = true
+  iam_instance_profile {
+    name = aws_iam_instance_profile.misa_runner_profile[0].name
   }
 
-  tags = merge(local.common_tags, {
-    Name    = "${var.project_name}-misa-runner"
-    Project = var.project_name
-  })
+  network_interfaces {
+    associate_public_ip_address = true
+    subnet_id                   = var.misa_subnet_id
+    security_groups             = [aws_security_group.misa_runner_sg[0].id]
+  }
 
-  # The instance is started/stopped by EventBridge and user-data. Terraform
-  # should only manage the initial stopped state and instance configuration.
+  user_data = base64encode(local.misa_runner_user_data)
+
+  instance_initiated_shutdown_behavior = "terminate"
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+
+    ebs {
+      volume_size           = var.misa_root_volume_size
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = merge(local.common_tags, {
+      Name    = "${var.project_name}-misa-runner"
+      Project = var.project_name
+    })
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags = merge(local.common_tags, {
+      Name    = "${var.project_name}-misa-runner-disk"
+      Project = var.project_name
+    })
+  }
+
+  tags = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -339,9 +359,18 @@ resource "aws_iam_role_policy" "misa_start_runner_lambda_policy" {
     Version = "2012-10-17"
     Statement = [
       {
+        Effect = "Allow"
+        Action = [
+          "ec2:RunInstances",
+          "ec2:DescribeInstances",
+          "ec2:CreateTags"
+        ]
+        Resource = "*"
+      },
+      {
         Effect   = "Allow"
-        Action   = ["ec2:StartInstances"]
-        Resource = [aws_instance.misa_runner[0].arn]
+        Action   = ["iam:PassRole"]
+        Resource = [aws_iam_role.misa_runner_role[0].arn]
       },
       {
         Effect   = "Allow"
@@ -364,12 +393,34 @@ resource "archive_file" "misa_start_runner_lambda" {
       import os
 
       REGION = os.environ["REGION"]
-      INSTANCE_ID = os.environ["INSTANCE_ID"]
+      LAUNCH_TEMPLATE_ID = os.environ["LAUNCH_TEMPLATE_ID"]
+      PROJECT_NAME = os.environ.get("PROJECT_NAME", "spendsense")
 
       def handler(event, context):
           ec2 = boto3.client("ec2", region_name=REGION)
-          ec2.start_instances(InstanceIds=[INSTANCE_ID])
-          return {"statusCode": 200, "body": json.dumps({"started": INSTANCE_ID})}
+          existing = ec2.describe_instances(
+              Filters=[
+                  {"Name": "tag:Project", "Values": [PROJECT_NAME]},
+                  {"Name": "instance-state-name", "Values": ["pending", "running"]},
+              ]
+          )
+          running_ids = [
+              i["InstanceId"]
+              for r in existing.get("Reservations", [])
+              for i in r.get("Instances", [])
+          ]
+          if running_ids:
+              print(f"MISA runner already active: {running_ids}")
+              return {"statusCode": 200, "body": json.dumps({"already_running": running_ids})}
+
+          response = ec2.run_instances(
+              LaunchTemplate={"LaunchTemplateId": LAUNCH_TEMPLATE_ID, "Version": "$Latest"},
+              MinCount=1,
+              MaxCount=1,
+          )
+          instance_id = response["Instances"][0]["InstanceId"]
+          print(f"Launched ephemeral MISA runner instance: {instance_id}")
+          return {"statusCode": 200, "body": json.dumps({"launched": instance_id})}
     EOF
     filename = "index.py"
   }
@@ -386,8 +437,9 @@ resource "aws_lambda_function" "misa_start_runner" {
 
   environment {
     variables = {
-      REGION      = var.aws_region
-      INSTANCE_ID = aws_instance.misa_runner[0].id
+      REGION             = var.aws_region
+      LAUNCH_TEMPLATE_ID = aws_launch_template.misa_runner[0].id
+      PROJECT_NAME       = var.project_name
     }
   }
 
@@ -453,9 +505,13 @@ resource "aws_iam_role_policy" "misa_stop_runner_lambda_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["ec2:StopInstances"]
-        Resource = [aws_instance.misa_runner[0].arn]
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:TerminateInstances",
+          "ec2:StopInstances"
+        ]
+        Resource = "*"
       },
       {
         Effect   = "Allow"
@@ -478,14 +534,27 @@ resource "archive_file" "misa_stop_runner_lambda" {
       import os
 
       REGION = os.environ["REGION"]
-      INSTANCE_ID = os.environ["INSTANCE_ID"]
+      PROJECT_NAME = os.environ.get("PROJECT_NAME", "spendsense")
 
       def handler(event, context):
           ec2 = boto3.client("ec2", region_name=REGION)
-          response = ec2.stop_instances(InstanceIds=[INSTANCE_ID])
+          existing = ec2.describe_instances(
+              Filters=[
+                  {"Name": "tag:Project", "Values": [PROJECT_NAME]},
+                  {"Name": "instance-state-name", "Values": ["pending", "running"]},
+              ]
+          )
+          instance_ids = [
+              i["InstanceId"]
+              for r in existing.get("Reservations", [])
+              for i in r.get("Instances", [])
+          ]
+          if instance_ids:
+              ec2.terminate_instances(InstanceIds=instance_ids)
+              print(f"Safety terminated instances: {instance_ids}")
           return {
               "statusCode": 200,
-              "body": json.dumps({"stopped": INSTANCE_ID, "response": str(response)})
+              "body": json.dumps({"terminated": instance_ids})
           }
     EOF
     filename = "index.py"
@@ -503,8 +572,8 @@ resource "aws_lambda_function" "misa_stop_runner" {
 
   environment {
     variables = {
-      REGION      = var.aws_region
-      INSTANCE_ID = aws_instance.misa_runner[0].id
+      REGION       = var.aws_region
+      PROJECT_NAME = var.project_name
     }
   }
 
