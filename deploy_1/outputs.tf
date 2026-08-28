@@ -28,9 +28,9 @@ output "gmail_token_secret_arn" {
   value       = aws_secretsmanager_secret.gmail_token.arn
 }
 
-output "misa_runner_instance_id" {
-  description = "ID of the MISA import runner EC2 instance."
-  value       = var.misa_enabled ? aws_instance.misa_runner[0].id : null
+output "misa_runner_launch_template_id" {
+  description = "ID of the MISA import runner EC2 launch template."
+  value       = var.misa_enabled ? aws_launch_template.misa_runner[0].id : null
 }
 
 output "misa_runner_security_group_id" {
