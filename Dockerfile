@@ -21,6 +21,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt 
 RUN pip install --no-cache-dir awscli==1.30.0 
+RUN playwright install --with-deps chromium 
 
 COPY app ./app
 
