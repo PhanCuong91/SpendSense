@@ -1,6 +1,6 @@
 # Deployment Requirements — SpendSense AWS + MISA Import
 
-> Scope: run the Gmail ingestion pipeline on AWS for ~15 minutes per day, then import newly parsed Spend/Earn transactions into MISA Money Keeper from an EC2 instance.
+> Scope: run the Gmail ingestion pipeline on AWS for ~15 minutes per day, then import newly parsed Spend/Earn transactions into MISA Money Keeper via an on-demand ECS Fargate Task.
 
 ---
 
@@ -8,18 +8,19 @@
 
 ### 1.1 Goals
 
-1. Run the Gmail poller + correlator on AWS automatically each day.
-2. Import new Spend/Earn transactions into MISA after ingestion finishes.
-3. Avoid duplicate MISA imports across runs.
-4. Keep logs in CloudWatch for debugging.
-5. Minimize cost.
+1. Run the Gmail poller + correlator on AWS automatically each day on ECS Fargate.
+2. Import new Spend/Earn transactions into MISA after ingestion and backup finish.
+3. Avoid duplicate MISA imports across runs using SQLite dedup state.
+4. Stream all container logs directly to CloudWatch in real time for effortless debugging.
+5. Minimize operational cost ($0 fixed storage, per-second serverless execution).
 
 ### 1.2 Constraints
 
-- **Cost is the top priority**: no ALB, no NAT Gateway, no RDS unless proven necessary.
-- **MISA import must use a real browser** because MISA has no public API. Playwright on ECS Fargate is possible only in headless mode and cannot handle interactive 2FA/captcha.
-- **App runs only ~15 minutes per day**: use scheduled start/stop.
-- **SQLite on EFS is acceptable** for this volume and duration.
+- **Cost is the top priority**: no ALB, no NAT Gateway, no persistent EC2/EBS disks, no RDS unless proven necessary.
+- **Headless browser automation**: Playwright runs headless Chromium inside the container.
+- **App runs only on-demand (~15 minutes per day for ingestion, ~1 minute for MISA import)**: use scheduled scaling and event-driven Fargate task invocation.
+- **Direct CloudWatch logging**: use standard `awslogs` log driver across all ECS tasks.
+- **SQLite state persistence**: SQLite on EFS / S3 backup.
 
 ---
 
@@ -31,8 +32,10 @@
 skinparam packageStyle rectangle
 
 package "AWS ECS/Fargate" #E1F5FE {
-    [ECS Service\nspendsense-service] as ECS
+    [ECS Ingestion Service\nspendsense-service] as ECS
     [Task: poller + correlator] as TASK
+    [Backup Task\nspendsense-backup-task] as BACKUP_TASK
+    [MISA Import Task\nspendsense-misa-task] as MISA_TASK
 }
 
 package "AWS EFS" #E0FFFF {
@@ -44,16 +47,19 @@ package "AWS S3" #FFF8DC {
 }
 
 package "AWS CloudWatch" #DCDCDC {
-    [Log Group\n/ecs/spendsense] as CW
+    [Log Group\n/ecs/spendsense] as CW_APP
+    [Log Group\n/ecs/spendsense-misa] as CW_MISA
 }
 
 package "AWS EventBridge" #FFFACD {
     [Scheduled Start/Stop] as SCHED
-    [Task Stopped -> Backup] as BACKUP_RULE
+    [Task Stopped -> Run Backup Task] as BACKUP_RULE
+    [S3 PutObject -> Run MISA Task] as MISA_RULE
 }
 
-package "AWS EC2 (spot or t3.micro)" #F0FFF0 {
-    [MISA Import Runner\nPlaywright + Chromium] as MISA
+package "AWS SSM Parameter Store" #F5F5F5 {
+    [/spendsense/misa_username] as SSM_USER
+    [/spendsense/misa_password] as SSM_PASS
 }
 
 package "MISA Money Keeper" #FFE4E1 {
@@ -63,34 +69,39 @@ package "MISA Money Keeper" #FFE4E1 {
 SCHED --> ECS : 14:00 UTC desired_count=1
 ECS --> TASK
 TASK --> DB : read/write
-TASK --> CW : logs
+TASK --> CW_APP : logs
 SCHED --> ECS : 14:20 UTC desired_count=0
 TASK --> BACKUP_RULE : stopped
-BACKUP_RULE --> S3 : upload txdb.sqlite3
-S3 --> MISA : download DB
-MISA --> DB : read
-MISA --> MISA_UI : import transactions
-MISA --> CW : logs (via CloudWatch agent)
+BACKUP_RULE --> BACKUP_TASK : RunTask (Fargate)
+BACKUP_TASK --> DB : read
+BACKUP_TASK --> S3 : upload txdb.sqlite3
+S3 --> MISA_RULE : PutObject event
+MISA_RULE --> MISA_TASK : RunTask (Fargate)
+MISA_TASK --> S3 : download latest DB
+MISA_TASK --> SSM_USER : fetch credentials
+MISA_TASK --> SSM_PASS : fetch credentials
+MISA_TASK --> MISA_UI : import transactions (Playwright)
+MISA_TASK --> S3 : upload updated DB (on success)
+MISA_TASK --> CW_MISA : direct real-time logs
+MISA_TASK --> MISA_TASK : terminate container
 
 @enduml
 ```
 
 ---
 
-## 3. ECS Task Requirements
+## 3. ECS Ingestion & Backup Tasks
 
-### 3.1 What the task runs
-
-The task has no API. It runs only:
+### 3.1 What the ingestion task runs
 
 1. **Poller worker** — fetches bank emails from Gmail, stores raw emails, and triggers parsing.
 2. **Correlator worker** — matches debit/credit pairs into `InternalTransfer` events.
 
-The parser runs synchronously inside the poller worker (`enqueue_for_parsing` calls `parse_email_task` directly). No separate parser container is needed.
+The parser runs synchronously inside the poller worker (`enqueue_for_parsing` calls `parse_email_task` directly).
 
 ### 3.2 Container command
 
-The Docker image stays single. `APP_ROLE` selects the command at runtime:
+The single Docker image switches behavior via `APP_ROLE` or direct CLI arguments:
 
 | `APP_ROLE` | Command |
 |------------|---------|
@@ -98,50 +109,36 @@ The Docker image stays single. `APP_ROLE` selects the command at runtime:
 | `correlator` | `python -m app.workers.correlator_worker` |
 | `misa` | `python -m app.misa.runner ...` |
 
-### 3.3 Init container
+### 3.3 Backup on stop
 
-Before workers start, an init container must:
-
-1. Mount EFS at `/app/data`.
-2. Download `txdb.sqlite3` from S3 if the file is missing or empty.
-3. Exit successfully so workers can start.
-
-### 3.4 Backup on stop
-
-When the ECS task stops, EventBridge triggers a one-off Fargate backup task that uploads `/app/data/txdb.sqlite3` to S3.
+When the ingestion task stops at 14:20 UTC, EventBridge triggers the one-off `spendsense-backup-task` on Fargate to upload `/app/data/txdb.sqlite3` to S3.
 
 ---
 
-## 4. MISA Import Runner
+## 4. MISA Import Task (ECS Fargate)
 
 ### 4.1 Where it runs
 
-**On a dedicated EC2 instance**, not on ECS.
+**On AWS ECS Fargate** as an on-demand standalone task (`spendsense-misa-task`), inside the existing `spendsense-cluster`.
 
-Reasons:
-
-- Playwright needs a desktop/browser environment. On Fargate only headless Chromium is available, and interactive login/2FA is impossible.
-- The MISA import is a short daily job. A small EC2 instance (t3.micro or t3.small) started on schedule is cheaper and more reliable than maintaining a GUI-capable Fargate task.
-- The EC2 instance can be stopped after the import completes to save cost.
+Advantages of ECS Fargate over EC2:
+- **Direct CloudWatch Logs**: Output streams automatically to `/ecs/spendsense-misa` via `awslogs`. No need to SSH or inspect EC2 files.
+- **Zero Fixed Storage Cost**: No persistent EBS volumes ($0.00 storage overhead).
+- **Native EventBridge Trigger**: EventBridge uses its built-in `ecs_target` to call `ecs:RunTask` directly, removing the need for Lambda start/stop proxy scripts.
+- **Cost**: Per-second billing (~$0.003 / month for a 1-minute daily run).
 
 ### 4.2 When it runs
 
-Triggered **after the ECS task has stopped** and the backup has been uploaded to S3.
+Triggered **automatically via EventBridge** when the S3 backup arrives:
 
-Options:
+1. S3 emits an `ObjectCreated:PutObject` event for `txdb.sqlite3`.
+2. EventBridge rule `spendsense-misa-db-backup-arrived` captures the event.
+3. EventBridge invokes `ecs:RunTask` on `spendsense-cluster` with `spendsense-misa-task` (Fargate).
 
-| Approach | Pros | Cons |
-|----------|------|------|
-| A. EventBridge rule on S3 `PutObject` for `txdb.sqlite3` | Simple, reacts to actual backup completion | If backup takes time, runner may start before upload finishes (use S3 event, so this is fine) |
-| B. Second EventBridge schedule ~5 minutes after ECS stop | Very simple, no coupling | Race condition if backup is slow |
-| C. Lambda that waits for backup task success, then starts EC2 | Most reliable | Adds Lambda cost/complexity |
-
-**Recommended: A** — S3 event notification on `PutObject` for `txdb.sqlite3` triggers an EventBridge rule that starts the EC2 instance.
-
-### 4.3 EC2 lifecycle
+### 4.3 Fargate Task Lifecycle
 
 ```plantuml
-@startuml MISA_Runner_Lifecycle
+@startuml MISA_Fargate_Lifecycle
 !theme plain
 skinparam backgroundColor #FEFEFE
 skinparam activityBackgroundColor #E1F5FE
@@ -154,203 +151,59 @@ skinparam arrowThickness 2
 
 start
 :S3 receives txdb.sqlite3 backup;
-:S3 event triggers EventBridge;
-:EventBridge starts EC2 instance;
-:EC2 user-data script runs;
-:Download latest DB from S3;
-:Install Playwright Chromium;
-:Log in to MISA;
+:S3 event triggers EventBridge rule;
+:EventBridge invokes ECS RunTask (Fargate);
+:Container starts & downloads latest DB from S3;
+:Container reads credentials from SSM Parameter Store;
+:Playwright headless Chromium logs in to MISA Web;
 :Run MISA import runner (yesterday -> today);
-if (success?) then (yes)
-  :Upload updated txdb.sqlite3 to S3;
+:All logs stream live to /ecs/spendsense-misa;
+if (import success?) then (yes)
+  :Upload updated txdb.sqlite3 (with import dedup state) to S3;
 else (no)
-  :Log failure;
+  :Log error; do NOT upload half-imported DB;
 endif
-:Stop EC2 instance;
+:Container exits & Fargate task terminates ($0 idle cost);
 stop
 
 @enduml
 ```
 
-### 4.4 State storage for MISA import
+### 4.4 Deduplication & State Storage
 
-**Current design**: `imported_state.json` tracks which candidate IDs have been imported.
-
-**Problem with S3-only state**: every run must download/upload the JSON file. That works but is fragile and adds S3 operations.
-
-**Better design**: add a column to the SQLite database itself.
-
-#### Proposed schema change
-
-Add to `parsed_transaction_candidate`:
-
-```python
-misa_imported_at = Column(TIMESTAMP(timezone=True), nullable=True)
-misa_import_status = Column(String, nullable=True)  # "imported" | "failed" | None
-```
-
-Or a separate table:
-
-```python
-class MisaImportState(Base):
-    __tablename__ = "misa_import_state"
-
-    parsed_candidate_id = Column(Uuid, ForeignKey("parsed_transaction_candidate.id"), primary_key=True)
-    imported_at = Column(TIMESTAMP(timezone=True), nullable=False)
-    amount = Column(Numeric(18, 2), nullable=True)
-    account = Column(String, nullable=True)
-    datetime = Column(String, nullable=True)
-    classification = Column(String, nullable=True)
-    status = Column(String, nullable=False, default="imported")
-```
-
-The separate table is cleaner because it avoids mutating the candidate row and keeps an audit trail.
-
-The MISA runner queries this table to skip already-imported rows and writes new rows on success. No JSON file needed.
-
-### 4.5 State sync between ECS and EC2
-
-Because the state lives in SQLite:
-
-1. ECS task writes parsed candidates and correlation results.
-2. ECS task stops; backup task uploads `txdb.sqlite3` to S3.
-3. EC2 instance downloads the same `txdb.sqlite3`.
-4. MISA runner reads/writes `misa_import_state` in the same SQLite file.
-5. EC2 instance uploads the updated `txdb.sqlite3` back to S3.
-6. Next day, ECS restores the updated DB from S3.
-
-This keeps the dedup state in one place and removes the need for a separate `imported_state.json` on S3.
-
-### 4.6 MISA runner command on EC2
-
-The EC2 instance runs the same Docker image with `APP_ROLE=misa`. The import date range is **yesterday to today** (inclusive):
-
-```bash
-START_DATE=$(date -d 'yesterday' +%Y-%m-%d)
-END_DATE=$(date +%Y-%m-%d)
-
-docker run --rm \
-  -e APP_ROLE=misa \
-  -e DATABASE_URL=sqlite:///./data/txdb.sqlite3 \
-  -e MISA_USERNAME=... \
-  -e MISA_PASSWORD=... \
-  -v /mnt/data:/app/data \
-  <ecr>/spend_sense:<tag> \
-  python -m app.misa.runner --start-date "$START_DATE" --end-date "$END_DATE"
-```
-
-The MISA runner will log in fresh each day. No session persistence is required.
+- Deduplication state is stored in the SQLite table `misa_import_state` (model: `app.misa.models.MisaImportState`).
+- The MISA runner queries this table to skip already-imported rows and records newly imported transaction IDs.
+- On success, the updated database is uploaded to S3 so the deduplication records persist across daily runs.
 
 ---
 
 ## 5. Docker Image Requirements
 
-### 5.1 Single image for all roles
-
-The same Docker image must support:
-
-- Poller worker
-- Correlator worker
-- MISA runner
-- Backup helper
-
-### 5.2 Playwright browser installation
-
-**Decision: download Chromium at runtime on EC2.**
-
-To keep the Docker image small and avoid EBS cost, **do not install Playwright Chromium in the image**. The image only contains the Python code and dependencies.
-
-Playwright browsers are installed on the EC2 instance at runtime, inside the container:
-
-```bash
-docker run --rm \
-  -v /mnt/data:/app/data \
-  <ecr>/spend_sense:<tag> \
-  playwright install chromium
-```
-
-This keeps:
-- ECR image small (~100 MB instead of ~1.5 GB),
-- ECS task startup fast,
-- EBS cost zero (no persistent volume needed for browsers).
-
-The browser download (~150-200 MB) adds ~1-2 minutes to the EC2 run, which is acceptable for a daily job.
-
-> Alternative considered: persist Chromium on an EBS volume. Rejected because EBS is billed 24/7 even when the instance is stopped, adding ~$0.72/month.
-
-### 5.3 Command selection
-
-The `CMD` in Dockerfile must switch on `APP_ROLE`:
-
-```dockerfile
-CMD ["sh", "-c", "\
-  case \"$APP_ROLE\" in \
-    poller) exec python -m app.workers.poller_worker ;; \
-    correlator) exec python -m app.workers.correlator_worker ;; \
-    misa) exec python -m app.misa.runner ;; \
-    backup) exec /backup-script.sh ;; \
-    *) echo \"Unknown APP_ROLE=$APP_ROLE\"; exit 1 ;; \
-  esac"]
-```
+### 5.1 Single image with Playwright Chromium
+- The Docker image contains Python application dependencies and Playwright with headless Chromium (`RUN playwright install --with-deps chromium`).
+- Baked-in Chromium allows Fargate containers to launch and execute the import in **10–15 seconds** without runtime downloads.
 
 ---
 
 ## 6. Logging Requirements
 
-### 6.1 ECS logs
-
-- Use `awslogs` log driver in ECS task definitions.
-- All logs go to CloudWatch log group `/ecs/spendsense`.
-- The existing `app/core/logging.py` already writes to stdout, so `awslogs` captures it.
-
-### 6.2 EC2 logs
-
-Option A: Run a CloudWatch agent on EC2 to forward `/var/log/spendsense.log` to CloudWatch.
-
-Option B: Run MISA import via Docker with `awslogs` log driver. The EC2 instance needs IAM permission to create log streams.
-
-**Recommended: B** — use Docker `awslogs` driver directly. Simpler, no agent installation.
-
-```bash
-docker run --rm \
-  --log-driver=awslogs \
-  --log-opt awslogs-region=ap-southeast-1 \
-  --log-opt awslogs-group=/ecs/spendsense-misa \
-  --log-opt awslogs-stream-prefix=misa \
-  ...
-```
+### 6.1 Direct CloudWatch Logging
+- All container `stdout` and `stderr` streams directly to CloudWatch Log Group **`/ecs/spendsense-misa`** using the `awslogs` log driver:
+  - `awslogs-group: /ecs/spendsense-misa`
+  - `awslogs-region: ap-southeast-1`
+  - `awslogs-stream-prefix: misa`
+  - `retention_in_days: 14`
+- CloudWatch Metric Filter monitors `"[failed]"` log entries to trigger SNS alarm emails if any transaction fails.
 
 ---
 
-## 7. Cost Optimization
+## 7. Cost Summary
 
-| Resource | Optimization |
-|----------|--------------|
-| ECS Fargate | Run only 15 min/day via scheduled scaling. Use Fargate Spot if supported in your region. |
-| EFS | Use EFS Lifecycle Management to move old backups to IA. Keep only the latest backup in S3 Standard. |
-| EC2 | Use t3.micro with scheduled start/stop, or t3.micro Spot. Stop after MISA import completes. |
-| S3 | Use Intelligent-Tiering or Standard-IA for backups. Versioning can be disabled. |
-| ECR | Keep image small (no browsers). Add lifecycle policy to keep only last 30 images. |
-| Secrets Manager | Two secrets are fine; cost is negligible. |
-| Playwright browsers | Install at runtime on EC2, not baked into image. |
-
----
-
-## 8. Open Questions / Clarifications
-
-1. **EC2 OS**: Amazon Linux 2023 or Ubuntu? Amazon Linux fits better with SSM and Docker.
-2. **Imported state**: do you prefer the column on `parsed_transaction_candidate` or a separate `misa_import_state` table? A separate table is recommended.
-3. **Failure handling**: if MISA import fails for one row, should the EC2 instance stop anyway? Yes, but the failed rows remain unmarked and will be retried next run.
-4. **Backup timing**: should the EC2 upload the updated DB back to S3 immediately after import, or only on success? Only on success avoids corrupting the backup with a half-imported state.
-
----
-
-## 9. Implementation Order
-
-1. Add `misa_import_state` table (Alembic migration + model).
-2. Update `app/misa/runner.py` to read/write DB state instead of JSON.
-3. Update `Dockerfile` to support `APP_ROLE=poller|correlator|misa`. Do not install Chromium in the image.
-4. Fix `deploy_1/main.tf` ECS task to run poller + correlator containers.
-5. Add S3 event → EventBridge → EC2 start automation.
-6. Create EC2 user-data script that pulls image, installs Chromium, downloads DB, runs MISA import, uploads DB, stops instance.
-7. Add CloudWatch log group for MISA runner.
+| Component | AWS Resource | Monthly Cost |
+| :--- | :--- | :--- |
+| **ECS Fargate Task** | 1 vCPU, 2 GB RAM (~1 min/day) | **~$0.003 / month** |
+| **Permanent Storage** | None (no EBS volumes kept) | **$0.00 / month** |
+| **SSM Parameter Store** | 2 Standard Parameters | **$0.00 / month** |
+| **EventBridge Trigger** | Default EventBus | **$0.00 / month** |
+| **CloudWatch Logs** | `/ecs/spendsense-misa` (14 days) | **$0.00 / month** |
+| **Total Cost** | | **< $0.01 / month** |
