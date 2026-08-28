@@ -15,12 +15,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 		PYTHONUNBUFFERED=1 \
 		PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-SHELL ["/bin/sh", "-euxo", "pipefail", "-c"]
+SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 
 WORKDIR /app
 
+# Install system dependencies required for building C-extensions
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt 
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt 
 RUN mkdir -p /ms-playwright && playwright install --with-deps chromium && chmod -R 777 /ms-playwright
 
 COPY app ./app
