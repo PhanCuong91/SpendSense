@@ -1,5 +1,5 @@
 
-FROM python:3.13-slim
+FROM python:3.13-slim-bookworm
 
 ARG APP_VERSION=dev
 ARG VCS_REF=local
@@ -12,7 +12,8 @@ LABEL org.opencontainers.image.title="email-service" \
 			org.opencontainers.image.created="$BUILD_DATE"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-		PYTHONUNBUFFERED=1
+		PYTHONUNBUFFERED=1 \
+		PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 SHELL ["/bin/sh", "-euxo", "pipefail", "-c"]
 
@@ -20,8 +21,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt 
-RUN pip install --no-cache-dir awscli==1.30.0 
-RUN playwright install --with-deps chromium 
+RUN mkdir -p /ms-playwright && playwright install --with-deps chromium && chmod -R 777 /ms-playwright
 
 COPY app ./app
 
