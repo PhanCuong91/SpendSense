@@ -104,7 +104,7 @@ variable "task_memory" {
 variable "enable_schedule" {
   description = "Enable daily start/stop schedules for the ECS service. Set false for always-on testing."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "gmail_credentials_file" {
@@ -153,49 +153,25 @@ variable "public_subnet_ids" {
 }
 
 # -----------------------------------------------------------------------------
-# MISA import runner
+# MISA import runner (ECS Fargate Task)
 # -----------------------------------------------------------------------------
 
 variable "misa_enabled" {
   type        = bool
-  description = "Create the MISA import runner EC2 instance and EventBridge trigger."
+  description = "Create the MISA import runner ECS Fargate task and EventBridge trigger."
   default     = true
 }
 
-variable "misa_ami_id" {
+variable "misa_task_cpu" {
   type        = string
-  description = "AMI ID for the MISA import runner EC2 instance. Amazon Linux 2023 with Docker is recommended."
-  default     = null
+  description = "Fargate CPU units for the MISA import runner task (e.g. 1024 for 1 vCPU)."
+  default     = "1024"
 }
 
-variable "misa_instance_type" {
+variable "misa_task_memory" {
   type        = string
-  description = "EC2 instance type for the MISA import runner."
-  default     = "t3.micro"
-}
-
-variable "misa_subnet_id" {
-  type        = string
-  description = "Public subnet ID where the MISA import runner will live. Must have outbound internet access."
-  default     = ""
-}
-
-variable "misa_key_name" {
-  type        = string
-  description = "Optional EC2 key pair name for SSH debugging. SSM Session Manager is preferred."
-  default     = null
-}
-
-variable "misa_root_volume_size" {
-  type        = number
-  description = "Root EBS volume size in GiB for the MISA import runner. The Amazon Linux 2023 snapshot requires at least 30 GiB."
-  default     = 30
-}
-
-variable "misa_safety_stop_schedule" {
-  type        = string
-  description = "Cron schedule expression (UTC) to forcefully stop the MISA EC2 runner if it has not stopped itself. Defaults to 14:45 UTC (25m after daily ECS stop)."
-  default     = "cron(45 14 * * ? *)"
+  description = "Fargate memory for the MISA import runner task in MiB (e.g. 2048 for 2 GB)."
+  default     = "2048"
 }
 
 variable "misa_alarm_email" {
