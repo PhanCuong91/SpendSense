@@ -30,12 +30,12 @@ output "gmail_token_secret_arn" {
 
 output "misa_task_definition_arn" {
   description = "ARN of the MISA import runner ECS task definition."
-  value       = var.misa_enabled ? aws_ecs_task_definition.misa_task[0].arn : null
+  value       = try(aws_ecs_task_definition.misa_task[0].arn, null)
 }
 
 output "misa_task_security_group_id" {
   description = "Security group ID of the MISA import runner ECS task."
-  value       = var.misa_enabled ? aws_security_group.misa_task_sg[0].id : null
+  value       = try(aws_security_group.misa_task_sg[0].id, null)
 }
 
 output "misa_log_group_name" {
@@ -45,21 +45,21 @@ output "misa_log_group_name" {
 
 output "misa_username_ssm_param_name" {
   description = "Name of the MISA username SSM parameter. Populate the value outside Terraform."
-  value       = var.misa_enabled ? aws_ssm_parameter.misa_username[0].name : null
+  value       = try(aws_ssm_parameter.misa_username[0].name, null)
 }
 
 output "misa_password_ssm_param_name" {
   description = "Name of the MISA password SSM parameter. Populate the value outside Terraform."
-  value       = var.misa_enabled ? aws_ssm_parameter.misa_password[0].name : null
+  value       = try(aws_ssm_parameter.misa_password[0].name, null)
 }
 
 output "misa_alerts_sns_topic_arn" {
   description = "ARN of the SNS topic for MISA alerts."
-  value       = var.misa_enabled ? aws_sns_topic.misa_alerts[0].arn : null
+  value       = try(aws_sns_topic.misa_alerts[0].arn, null)
 }
 
 output "misa_import_failed_alarm_arn" {
   description = "ARN of the CloudWatch alarm for MISA import failures."
-  value       = var.misa_enabled ? aws_cloudwatch_metric_alarm.misa_import_failed_alarm[0].arn : null
+  value       = try(aws_cloudwatch_metric_alarm.misa_import_failed_alarm[0].arn, null)
 }
 

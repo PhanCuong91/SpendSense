@@ -29,6 +29,11 @@ POPUP_TIMEOUT_MS = 10_000
 # the popup opens before interacting with the account field.
 POPUP_ACCOUNT_SETTLE_MS = 2_500
 
+# After saving a transaction and confirming the save outcome, wait this long
+# for the popup/tab to fully close, unmount, and settle before subsequent
+# interactions (e.g. clicking the Import button again).
+POPUP_CLOSE_SETTLE_MS = 2_000
+
 
 def format_misa_amount(amount: Union[float, Decimal, int, str]) -> str:
     """Format amount for MISA Web input using Vietnamese number format (, for decimal)."""
@@ -326,6 +331,12 @@ def add_transaction(page: "Page", tx: MisaTransaction) -> MisaImportResult:
 
         outcome = _wait_for_save_outcome(page, popup_locator, POPUP_TIMEOUT_MS)
         if outcome is True:
+            try:
+                popup_locator.wait_for(state="hidden", timeout=POPUP_TIMEOUT_MS)
+            except Exception:
+                pass
+            if POPUP_CLOSE_SETTLE_MS > 0:
+                page.wait_for_timeout(POPUP_CLOSE_SETTLE_MS)
             return MisaImportResult(success=True)
         if outcome is False:
             error_message = page.locator(selectors.ERROR_INDICATOR).inner_text()

@@ -17,9 +17,9 @@ variable "ecr_repo_name" {
 }
 
 variable "app_image_tag" {
-  description = "Image tag to run from ECR."
+  description = "Image tag to run from ECR. Set to 'latest' to automatically discover the newest pushed tag."
   type        = string
-  default     = "1.0.9"
+  default     = "latest"
 }
 
 variable "app_container_name" {
@@ -104,7 +104,7 @@ variable "task_memory" {
 variable "enable_schedule" {
   description = "Enable daily start/stop schedules for the ECS service. Set false for always-on testing."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "gmail_credentials_file" {
