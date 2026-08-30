@@ -416,15 +416,21 @@ resource "aws_iam_role_policy" "eventbridge_ecs_policy" {
       {
         Effect   = "Allow"
         Action   = ["ecs:RunTask"]
-        Resource = [aws_ecs_task_definition.backup_task.arn]
+        Resource = concat(
+          [aws_ecs_task_definition.backup_task.arn],
+          var.misa_enabled ? [aws_ecs_task_definition.misa_task[0].arn] : []
+        )
       },
       {
         Effect = "Allow"
         Action = ["iam:PassRole"]
-        Resource = [
-          aws_iam_role.ecs_task_execution_role.arn,
-          aws_iam_role.ecs_task_role.arn
-        ]
+        Resource = concat(
+          [
+            aws_iam_role.ecs_task_execution_role.arn,
+            aws_iam_role.ecs_task_role.arn
+          ],
+          var.misa_enabled ? [aws_iam_role.misa_task_role[0].arn] : []
+        )
         Condition = {
           StringLike = {
             "iam:PassedToService" = "ecs-tasks.amazonaws.com"
@@ -437,7 +443,7 @@ resource "aws_iam_role_policy" "eventbridge_ecs_policy" {
 
 resource "aws_cloudwatch_event_rule" "app_task_stopped" {
   name        = "${var.project_name}-app-task-stopped"
-  description = "Run the database backup task after the main ECS task has stopped"
+  description = "Trigger downstream processing after the main ECS task has stopped"
 
   event_pattern = jsonencode({
     source      = ["aws.ecs"]
@@ -452,8 +458,9 @@ resource "aws_cloudwatch_event_rule" "app_task_stopped" {
 }
 
 resource "aws_cloudwatch_event_target" "run_backup_task" {
-  rule = aws_cloudwatch_event_rule.app_task_stopped.name
-  arn  = aws_ecs_cluster.app_cluster.arn
+  count = var.misa_enabled ? 0 : 1
+  rule  = aws_cloudwatch_event_rule.app_task_stopped.name
+  arn   = aws_ecs_cluster.app_cluster.arn
 
   role_arn = aws_iam_role.eventbridge_ecs_role.arn
 
