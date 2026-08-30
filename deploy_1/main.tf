@@ -25,11 +25,22 @@ data "aws_ecr_image" "latest_app" {
   most_recent     = true
 }
 
+resource "aws_default_vpc" "default" {
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = merge(local.common_tags, {
+    Name = "Default VPC"
+  })
+}
+
 locals {
   common_tags = {
     Project = var.project_name
     Managed = "terraform"
   }
+
+  vpc_id = var.vpc_id != "" && var.vpc_id != null ? var.vpc_id : aws_default_vpc.default.id
 
   ecs_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
 
@@ -80,7 +91,7 @@ resource "aws_efs_file_system" "app_fs" {
 resource "aws_security_group" "ecs_sg" {
   name        = "${var.project_name}-ecs-sg"
   description = "ECS task security group"
-  vpc_id      = var.vpc_id
+  vpc_id      = local.vpc_id
 
   egress {
     from_port   = 0
@@ -95,7 +106,7 @@ resource "aws_security_group" "ecs_sg" {
 resource "aws_security_group" "efs_sg" {
   name        = "${var.project_name}-efs-sg"
   description = "Allow NFS from ECS tasks"
-  vpc_id      = var.vpc_id
+  vpc_id      = local.vpc_id
 
   ingress {
     from_port       = 2049
@@ -414,8 +425,8 @@ resource "aws_iam_role_policy" "eventbridge_ecs_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["ecs:RunTask"]
+        Effect = "Allow"
+        Action = ["ecs:RunTask"]
         Resource = concat(
           [aws_ecs_task_definition.backup_task.arn],
           var.misa_enabled ? [aws_ecs_task_definition.misa_task[0].arn] : []

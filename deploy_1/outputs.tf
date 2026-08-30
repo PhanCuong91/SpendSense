@@ -34,8 +34,8 @@ output "misa_task_definition_arn" {
 }
 
 output "misa_task_security_group_id" {
-  description = "Security group ID of the MISA import runner ECS task."
-  value       = try(aws_security_group.misa_task_sg[0].id, null)
+  description = "Security group ID of the MISA import runner ECS task (reuses ecs_sg)."
+  value       = aws_security_group.ecs_sg.id
 }
 
 output "misa_log_group_name" {
