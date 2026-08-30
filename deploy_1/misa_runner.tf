@@ -65,6 +65,16 @@ resource "aws_security_group" "misa_task_sg" {
   })
 }
 
+resource "aws_security_group_rule" "efs_ingress_misa_task" {
+  count                    = var.misa_enabled ? 1 : 0
+  type                     = "ingress"
+  from_port                = 2049
+  to_port                  = 2049
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.efs_sg.id
+  source_security_group_id = aws_security_group.misa_task_sg[0].id
+}
+
 # -----------------------------------------------------------------------------
 # IAM Roles for MISA Fargate Task
 # -----------------------------------------------------------------------------
@@ -98,15 +108,6 @@ resource "aws_iam_role_policy" "misa_task_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "S3BackupAccess"
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject"
-        ]
-        Resource = "arn:aws:s3:::${var.db_backup_bucket}/${var.db_backup_key}"
-      },
-      {
         Sid    = "SSMParameterRead"
         Effect = "Allow"
         Action = [
@@ -136,6 +137,19 @@ resource "aws_ecs_task_definition" "misa_task" {
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn            = aws_iam_role.misa_task_role[0].arn
 
+  volume {
+    name = "efs-data"
+
+    efs_volume_configuration {
+      file_system_id = aws_efs_file_system.app_fs.id
+      authorization_config {
+        access_point_id = aws_efs_access_point.app_ap.id
+        iam             = "DISABLED"
+      }
+      transit_encryption = "ENABLED"
+    }
+  }
+
   container_definitions = jsonencode([
     {
       name      = "${var.project_name}-misa"
@@ -149,7 +163,7 @@ resource "aws_ecs_task_definition" "misa_task" {
         },
         {
           name  = "DATABASE_URL"
-          value = "sqlite:///./data/txdb.sqlite3"
+          value = var.db_file_path
         },
         {
           name  = "MISA_USERNAME_PARAM_NAME"
@@ -160,16 +174,16 @@ resource "aws_ecs_task_definition" "misa_task" {
           value = aws_ssm_parameter.misa_password[0].name
         },
         {
-          name  = "S3_BUCKET"
-          value = var.db_backup_bucket
-        },
-        {
-          name  = "S3_KEY"
-          value = var.db_backup_key
-        },
-        {
           name  = "AWS_REGION"
           value = var.aws_region
+        }
+      ]
+
+      mountPoints = [
+        {
+          sourceVolume  = "efs-data"
+          containerPath = var.db_mount_path
+          readOnly      = false
         }
       ]
 
@@ -177,48 +191,12 @@ resource "aws_ecs_task_definition" "misa_task" {
         "/bin/sh",
         "-c",
         <<-EOT
-          echo "=== [DEBUG] Current Working Path & Python Environment ==="
-          echo "Current working directory (pwd): $(pwd)"
-          echo "Listing current directory contents:"
-          ls .
-          echo "PYTHONPATH=$PYTHONPATH"
-          python --version
-
-          echo "=== [DEBUG] Listing files in /app ==="
-          ls  ./app
-
-          echo "=== [DEBUG] Listing files in /app/app/misa ==="
-          ls ./app/misa || true
-
           set -e
-          mkdir -p /app/data
-
-          echo "=== [1/3] Downloading DB from S3 ==="
-          python - <<'PY'
-import os, boto3
-from botocore.config import Config
-s3 = boto3.client('s3', region_name='${var.aws_region}', config=Config(signature_version='s3v4'))
-try:
-    s3.download_file('${var.db_backup_bucket}', '${var.db_backup_key}', '/app/data/txdb.sqlite3')
-    print('Successfully downloaded database from S3')
-except Exception as e:
-    print(f'Warning downloading DB from S3: {e}')
-PY
-
-          echo "=== [2/3] Running MISA Import ==="
+          echo "=== [1/2] Running MISA Import from EFS Database ==="
           START_DATE=$(date -d 'yesterday' +%Y-%m-%d)
           END_DATE=$(date +%Y-%m-%d)
           python -m app.misa.runner --start-date "$START_DATE" --end-date "$END_DATE"
-
-          echo "=== [3/3] Uploading updated DB to S3 ==="
-          python - <<'PY'
-import os, boto3
-from botocore.config import Config
-s3 = boto3.client('s3', region_name='${var.aws_region}', config=Config(signature_version='s3v4'))
-s3.upload_file('/app/data/txdb.sqlite3', '${var.db_backup_bucket}', '${var.db_backup_key}')
-print('Successfully uploaded updated database to S3')
-PY
-          echo "=== [DONE] MISA Task Finished Successfully ==="
+          echo "=== [2/2] MISA Task Finished Successfully ==="
         EOT
       ]
 
@@ -237,24 +215,47 @@ PY
 }
 
 # -----------------------------------------------------------------------------
-# EventBridge: S3 PutObject -> Run MISA Fargate Task
+# EventBridge: app_task STOPPED -> Run MISA Fargate Task
 # -----------------------------------------------------------------------------
 
-resource "aws_cloudwatch_event_rule" "misa_db_backup_arrived" {
+resource "aws_cloudwatch_event_target" "run_misa_task" {
+  count     = var.misa_enabled ? 1 : 0
+  target_id = "${var.project_name}-misa-task-target"
+  arn       = aws_ecs_cluster.app_cluster.arn
+  rule      = aws_cloudwatch_event_rule.app_task_stopped.name
+  role_arn  = aws_iam_role.eventbridge_ecs_role.arn
+
+  ecs_target {
+    task_count          = 1
+    task_definition_arn = aws_ecs_task_definition.misa_task[0].arn
+    launch_type         = "FARGATE"
+    platform_version    = "1.4.0"
+
+    network_configuration {
+      subnets          = local.ecs_subnet_ids
+      security_groups  = [aws_security_group.misa_task_sg[0].id]
+      assign_public_ip = true
+    }
+  }
+}
+
+# -----------------------------------------------------------------------------
+# EventBridge: misa_task STOPPED -> Run Backup Fargate Task
+# -----------------------------------------------------------------------------
+
+resource "aws_cloudwatch_event_rule" "misa_task_stopped" {
   count       = var.misa_enabled ? 1 : 0
-  name        = "${var.project_name}-misa-db-backup-arrived"
-  description = "Run MISA import task when txdb.sqlite3 is backed up to S3"
+  name        = "${var.project_name}-misa-task-stopped"
+  description = "Run the database backup task after the MISA import task has stopped"
 
   event_pattern = jsonencode({
-    source      = ["aws.s3"]
-    detail-type = ["Object Created"]
+    source      = ["aws.ecs"]
+    detail-type = ["ECS Task State Change"]
     detail = {
-      bucket = {
-        name = [var.db_backup_bucket]
-      }
-      object = {
-        key = [var.db_backup_key]
-      }
+      lastStatus        = ["STOPPED"]
+      desiredStatus     = ["STOPPED"]
+      clusterArn        = [aws_ecs_cluster.app_cluster.arn]
+      taskDefinitionArn = [aws_ecs_task_definition.misa_task[0].arn]
     }
   })
 }
@@ -290,14 +291,14 @@ resource "aws_iam_role_policy" "eventbridge_misa_ecs_policy" {
       {
         Effect   = "Allow"
         Action   = ["ecs:RunTask"]
-        Resource = [aws_ecs_task_definition.misa_task[0].arn]
+        Resource = [aws_ecs_task_definition.backup_task.arn]
       },
       {
         Effect = "Allow"
         Action = ["iam:PassRole"]
         Resource = [
           aws_iam_role.ecs_task_execution_role.arn,
-          aws_iam_role.misa_task_role[0].arn
+          aws_iam_role.ecs_task_role.arn
         ]
         Condition = {
           StringLike = {
@@ -309,31 +310,25 @@ resource "aws_iam_role_policy" "eventbridge_misa_ecs_policy" {
   })
 }
 
-resource "aws_cloudwatch_event_target" "misa_task" {
-  count     = var.misa_enabled ? 1 : 0
-  target_id = "${var.project_name}-misa-task-target"
-  arn       = aws_ecs_cluster.app_cluster.arn
-  rule      = aws_cloudwatch_event_rule.misa_db_backup_arrived[0].name
-  role_arn  = aws_iam_role.eventbridge_misa_ecs_role[0].arn
+resource "aws_cloudwatch_event_target" "run_backup_task_after_misa" {
+  count               = var.misa_enabled ? 1 : 0
+  target_id           = "${var.project_name}-backup-task-after-misa-target"
+  arn                 = aws_ecs_cluster.app_cluster.arn
+  rule                = aws_cloudwatch_event_rule.misa_task_stopped[0].name
+  role_arn            = aws_iam_role.eventbridge_misa_ecs_role[0].arn
 
   ecs_target {
     task_count          = 1
-    task_definition_arn = aws_ecs_task_definition.misa_task[0].arn
+    task_definition_arn = aws_ecs_task_definition.backup_task.arn
     launch_type         = "FARGATE"
     platform_version    = "1.4.0"
 
     network_configuration {
       subnets          = local.ecs_subnet_ids
-      security_groups  = [aws_security_group.misa_task_sg[0].id]
+      security_groups  = [aws_security_group.ecs_sg.id]
       assign_public_ip = true
     }
   }
-}
-
-resource "aws_s3_bucket_notification" "misa_backup_notification" {
-  count       = var.misa_enabled ? 1 : 0
-  bucket      = var.db_backup_bucket
-  eventbridge = true
 }
 
 # -----------------------------------------------------------------------------

@@ -155,15 +155,21 @@ def click_import_button(page: "Page", timeout_ms: int = POPUP_TIMEOUT_MS) -> boo
 
     `IMPORT_BUTTON` is an up/down dropdown toggle: clicking it reveals more
     options, one of which (`SINGLE_TRANSACTION_OPTION`) opens the Add
-    Transaction popup for a single transaction. This clicks both in
-    sequence, then waits for the popup to open (confirmed via
-    `IMPORT_BUTTON_RESULT`).
+    Transaction popup for a single transaction.
+
+    If `SINGLE_TRANSACTION_OPTION` is not already visible, click `IMPORT_BUTTON`
+    to expand the menu, then click `SINGLE_TRANSACTION_OPTION` and wait for
+    the popup to open (confirmed via `IMPORT_BUTTON_RESULT`).
 
     Returns True if the popup opened, False otherwise. Never raises.
     """
     try:
-        page.click(selectors.IMPORT_BUTTON)
-        page.click(selectors.SINGLE_TRANSACTION_OPTION)
+        single_opt = page.locator(selectors.SINGLE_TRANSACTION_OPTION)
+        if not single_opt.is_visible():
+            page.click(selectors.IMPORT_BUTTON)
+            single_opt.wait_for(state="visible", timeout=timeout_ms)
+
+        single_opt.click()
         page.wait_for_selector(selectors.IMPORT_BUTTON_RESULT, timeout=timeout_ms)
         page.wait_for_timeout(POPUP_ACCOUNT_SETTLE_MS)
         return True
