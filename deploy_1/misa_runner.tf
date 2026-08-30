@@ -44,38 +44,6 @@ resource "aws_cloudwatch_log_group" "misa_logs" {
 }
 
 # -----------------------------------------------------------------------------
-# Security Group for MISA Fargate Task
-# -----------------------------------------------------------------------------
-
-resource "aws_security_group" "misa_task_sg" {
-  count       = var.misa_enabled ? 1 : 0
-  name        = "${var.project_name}-misa-task-sg"
-  description = "Security group for the MISA import runner ECS Fargate task"
-  vpc_id      = var.vpc_id
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-misa-task-sg"
-  })
-}
-
-resource "aws_security_group_rule" "efs_ingress_misa_task" {
-  count                    = var.misa_enabled ? 1 : 0
-  type                     = "ingress"
-  from_port                = 2049
-  to_port                  = 2049
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.efs_sg.id
-  source_security_group_id = aws_security_group.misa_task_sg[0].id
-}
-
-# -----------------------------------------------------------------------------
 # IAM Roles for MISA Fargate Task
 # -----------------------------------------------------------------------------
 
@@ -233,7 +201,7 @@ resource "aws_cloudwatch_event_target" "run_misa_task" {
 
     network_configuration {
       subnets          = local.ecs_subnet_ids
-      security_groups  = [aws_security_group.misa_task_sg[0].id]
+      security_groups  = [aws_security_group.ecs_sg.id]
       assign_public_ip = true
     }
   }
@@ -311,11 +279,11 @@ resource "aws_iam_role_policy" "eventbridge_misa_ecs_policy" {
 }
 
 resource "aws_cloudwatch_event_target" "run_backup_task_after_misa" {
-  count               = var.misa_enabled ? 1 : 0
-  target_id           = "${var.project_name}-backup-task-after-misa-target"
-  arn                 = aws_ecs_cluster.app_cluster.arn
-  rule                = aws_cloudwatch_event_rule.misa_task_stopped[0].name
-  role_arn            = aws_iam_role.eventbridge_misa_ecs_role[0].arn
+  count     = var.misa_enabled ? 1 : 0
+  target_id = "${var.project_name}-backup-task-after-misa-target"
+  arn       = aws_ecs_cluster.app_cluster.arn
+  rule      = aws_cloudwatch_event_rule.misa_task_stopped[0].name
+  role_arn  = aws_iam_role.eventbridge_misa_ecs_role[0].arn
 
   ecs_target {
     task_count          = 1
