@@ -43,7 +43,7 @@
                       <div class="menu-item-updown op-icon-chevron-down">Import</div>
                     </div>
                   </div>
-                  <div> <!-- nth-child(2): menu options revealed on click -->
+                  <div hidden data-fixture-import-menu> <!-- nth-child(2): menu options revealed on click -->
                     <div> <!-- nth-child(1): single-transaction option -->
                       <div data-fixture-open-popup>Giao dịch đơn lẻ</div>
                     </div>
@@ -260,6 +260,11 @@
     // Account/Category, tab switching, and distinguishing the two Save
     // buttons), matching the behaviors confirmed live against the real
     // site in misa_selectors.md.
+    document.querySelector('.menu-item-updown').addEventListener('click', () => {
+      const menu = document.querySelector('[data-fixture-import-menu]');
+      if (menu) menu.hidden = !menu.hidden;
+    });
+
     document.querySelector('[data-fixture-open-popup]').addEventListener('click', () => {
       document.querySelector('[data-fixture-modal-root]').hidden = false;
     });

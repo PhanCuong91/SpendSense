@@ -173,3 +173,20 @@ def test_add_transaction_exception_is_caught_not_raised(page, monkeypatch):
 
     assert result.success is False
     assert result.error_message
+
+
+def test_add_multiple_sequential_transactions_succeeds(page):
+    """Importing multiple transactions in a row (odd and even) must succeed
+    without the import dropdown toggle closing on even iterations."""
+    _goto_transactions(page)
+
+    for i in range(1, 5):
+        tx = MisaTransaction(
+            amount=10 * i,
+            account="Helper",
+            datetime="08/08/2026 10:00",
+            category="Bars & Coffee",
+            classification="Spend",
+        )
+        res = client.add_transaction(page, tx)
+        assert res.success is True, f"Transaction #{i} failed: {res.error_message}"
