@@ -139,7 +139,7 @@ resource "aws_ecs_task_definition" "misa_task" {
   container_definitions = jsonencode([
     {
       name      = "${var.project_name}-misa"
-      image     = "${aws_ecr_repository.app.repository_url}:${var.app_image_tag}"
+      image     = local.app_image_url
       essential = true
 
       environment = [
@@ -176,7 +176,50 @@ resource "aws_ecs_task_definition" "misa_task" {
       command = [
         "/bin/sh",
         "-c",
-        "cd /app && set -e && mkdir -p /app/data && python - <<'PY'\nimport os, boto3\nfrom botocore.config import Config\ns3 = boto3.client('s3', region_name='${var.aws_region}', config=Config(signature_version='s3v4'))\ntry:\n    s3.download_file('${var.db_backup_bucket}', '${var.db_backup_key}', '/app/data/txdb.sqlite3')\n    print('Successfully downloaded database from S3')\nexcept Exception as e:\n    print(f'Warning downloading DB from S3: {e}')\nPY\nSTART_DATE=$(date -d 'yesterday' +%Y-%m-%d)\nEND_DATE=$(date +%Y-%m-%d)\npython -m app.misa.runner --start-date \"$START_DATE\" --end-date \"$END_DATE\"\npython - <<'PY'\nimport os, boto3\nfrom botocore.config import Config\ns3 = boto3.client('s3', region_name='${var.aws_region}', config=Config(signature_version='s3v4'))\ns3.upload_file('/app/data/txdb.sqlite3', '${var.db_backup_bucket}', '${var.db_backup_key}')\nprint('Successfully uploaded updated database to S3')\nPY\n"
+        <<-EOT
+          echo "=== [DEBUG] Current Working Path & Python Environment ==="
+          echo "Current working directory (pwd): $(pwd)"
+          echo "Listing current directory contents:"
+          ls .
+          echo "PYTHONPATH=$PYTHONPATH"
+          python --version
+
+          echo "=== [DEBUG] Listing files in /app ==="
+          ls  ./app
+
+          echo "=== [DEBUG] Listing files in /app/app/misa ==="
+          ls ./app/misa || true
+
+          set -e
+          mkdir -p /app/data
+
+          echo "=== [1/3] Downloading DB from S3 ==="
+          python - <<'PY'
+import os, boto3
+from botocore.config import Config
+s3 = boto3.client('s3', region_name='${var.aws_region}', config=Config(signature_version='s3v4'))
+try:
+    s3.download_file('${var.db_backup_bucket}', '${var.db_backup_key}', '/app/data/txdb.sqlite3')
+    print('Successfully downloaded database from S3')
+except Exception as e:
+    print(f'Warning downloading DB from S3: {e}')
+PY
+
+          echo "=== [2/3] Running MISA Import ==="
+          START_DATE=$(date -d 'yesterday' +%Y-%m-%d)
+          END_DATE=$(date +%Y-%m-%d)
+          python -m app.misa.runner --start-date "$START_DATE" --end-date "$END_DATE"
+
+          echo "=== [3/3] Uploading updated DB to S3 ==="
+          python - <<'PY'
+import os, boto3
+from botocore.config import Config
+s3 = boto3.client('s3', region_name='${var.aws_region}', config=Config(signature_version='s3v4'))
+s3.upload_file('/app/data/txdb.sqlite3', '${var.db_backup_bucket}', '${var.db_backup_key}')
+print('Successfully uploaded updated database to S3')
+PY
+          echo "=== [DONE] MISA Task Finished Successfully ==="
+        EOT
       ]
 
       logConfiguration = {

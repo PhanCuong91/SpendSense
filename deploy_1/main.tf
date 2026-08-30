@@ -19,6 +19,12 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
+data "aws_ecr_image" "latest_app" {
+  count           = var.app_image_tag == "latest" || var.app_image_tag == "" ? 1 : 0
+  repository_name = aws_ecr_repository.app.name
+  most_recent     = true
+}
+
 locals {
   common_tags = {
     Project = var.project_name
@@ -26,6 +32,12 @@ locals {
   }
 
   ecs_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : var.private_subnet_ids
+
+  resolved_image_tag = (var.app_image_tag == "latest" || var.app_image_tag == "") ? (
+    length(try(data.aws_ecr_image.latest_app[0].image_tags, [])) > 0 ? data.aws_ecr_image.latest_app[0].image_tags[0] : "latest"
+  ) : var.app_image_tag
+
+  app_image_url = "${aws_ecr_repository.app.repository_url}:${local.resolved_image_tag}"
 }
 
 resource "aws_ecr_repository" "app" {
@@ -260,7 +272,7 @@ resource "aws_ecs_task_definition" "app_task" {
   container_definitions = jsonencode([
     {
       name      = var.app_container_name
-      image     = "${aws_ecr_repository.app.repository_url}:${var.app_image_tag}"
+      image     = local.app_image_url
       essential = true
 
       environment = [

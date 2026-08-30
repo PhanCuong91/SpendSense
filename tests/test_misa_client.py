@@ -62,6 +62,7 @@ def _skip_account_settle_wait(monkeypatch):
     settle before touching the account field; the fixture has no such
     async behavior, so skip the wait to keep the suite fast."""
     monkeypatch.setattr(client, "POPUP_ACCOUNT_SETTLE_MS", 0)
+    monkeypatch.setattr(client, "POPUP_CLOSE_SETTLE_MS", 0)
 
 
 def _goto_transactions(page):
