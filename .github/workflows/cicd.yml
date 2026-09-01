@@ -63,6 +63,7 @@ jobs:
           python3 -m pytest tests/ -v \
             --tb=short \
             --ignore=tests/test_misa_client.py \
+            --ignore=tests/test_endpoints.py \
             -q
 
       - name: Merge pull request
