@@ -183,4 +183,3 @@ Label-based GitHub Actions pipeline. See [`docs/CICD.md`](docs/CICD.md).
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Local dev setup |
 | [`docs/CICD.md`](docs/CICD.md) | CI/CD pipeline |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | AWS infrastructure & Terraform |
-| [`deploy_1/ARCHITECTURE.md`](deploy_1/ARCHITECTURE.md) | Terraform infra detail |
