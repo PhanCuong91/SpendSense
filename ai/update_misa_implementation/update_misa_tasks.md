@@ -173,7 +173,7 @@ Required actions:
    (`_wait_for_save_outcome()`), mirroring the existing
    `_wait_for_login_outcome()` pattern.
 
-### 5.3 Runner / CLI [ ]
+### 5.3 Runner / CLI [x]
 Required actions:
 1. [x] Refactor `app/misa/runner.py` to use the DB-backed `MisaImportState`
    table instead of the JSON dedup store. Remove `--state-file` CLI flag.
@@ -210,6 +210,24 @@ Required actions:
    (`test_summary_logged_when_credentials_missing`) confirming a missing
    credential aborts with a clear error *before* `sync_playwright()` is
    ever called (no browser launch, no partial run).
+4. [x] Implement error recovery in `_run_import()` loop (requirements §3.5,
+   design §5.4): after any `add_transaction()` failure or exception, call
+   `page.reload()` and detect whether the session is still live by checking
+   if the current URL matches `TRANSACTIONS_URL` or `LOGIN_SUCCESS_INDICATOR`
+   is present. If the session expired, call `client.login(page, username,
+   password)` and `client.save_session(context)`. If re-login fails, log a
+   fatal message and return exit code 1 immediately. Emit a
+   `[recovery] row=<id> action=reload|relogin result=ok|failed` INFO log
+   line after every recovery attempt. **Done (2026-09-02)** — implemented
+   as `_recover_session()` helper in `runner.py`; wired into `_run_import()`
+   loop immediately after each failed row.
+5. [x] Add unit/integration tests for the recovery flow in
+   `tests/test_misa_runner.py`:
+   - A failed row triggers a `page.reload()` before the next row.
+   - If reload lands on login page, re-login is attempted.
+   - If re-login fails, run aborts with exit code 1 and a fatal log message.
+   - A `[recovery]` log line is emitted for each recovery attempt.
+   **Done (2026-09-02)** — 4 new tests added, all 53 tests pass.
 
 ### 5.4 Verification [ ]
 Required actions:
@@ -240,14 +258,20 @@ The task is complete when:
    end-of-run summary.
 5. No MISA credentials are stored in the repository.
 6. The test suite for `app/misa/` passes.
+7. On any row import error, the runner performs a page reload (or re-login if
+   the session has expired) before continuing; a `[recovery]` log line is
+   emitted; and the run aborts with exit code 1 only if re-login itself fails.
 
 ## 8. Suggested Next Steps
-1. Run `python -m app.misa.runner --dry-run` against the real
+1. **Implement error recovery** (§5.3 task 4 + 5): add reload/re-login logic
+   to `_run_import()` in `runner.py` and write tests covering the three
+   scenarios (reload-ok, reload-then-relogin-ok, relogin-failed-abort).
+2. Run `python -m app.misa.runner --dry-run` against the real
    `data/txdb.sqlite3` to verify the planned set.
-2. Run a manual test pass on the real MISA account with `--limit 1` for one
+3. Run a manual test pass on the real MISA account with `--limit 1` for one
    Spend row and one Earn row; confirm no duplicates on re-run.
-3. Clean up the leftover test Earn transaction created during selector
+4. Clean up the leftover test Earn transaction created during selector
    verification (amount 10, account "Helper", category "Balance"), if
    desired.
-4. Update deployment docs/EC2 user-data to install Playwright and run
+5. Update deployment docs/EC2 user-data to install Playwright and run
    `python -m app.misa.runner --start-date yesterday --end-date today`.

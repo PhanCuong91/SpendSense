@@ -92,6 +92,19 @@ else (yes)
       :Log success;
     else (no)
       :Log failure\n(leave id eligible for retry);
+      :Attempt page reload;
+      if (Landed on transactions page?) then (yes)
+        :Continue to next row;
+      else (no — session expired)
+        :Re-login;
+        if (Re-login succeeded?) then (yes)
+          :Continue to next row;
+        else (no)
+          :Log fatal error;
+          :Abort run (exit 1);
+          stop
+        endif
+      endif
     endif
   endwhile (no)
   :Print summary;
@@ -218,6 +231,28 @@ No other module should contain a hardcoded selector string.
   (e.g. navigating to the transactions page redirects to login or not). Falls
   back to full login if the session expired.
 
+### 5.4 Error Recovery — Reload / Re-login (requirements §3.5)
+When `add_transaction()` raises an exception or returns a failed
+`MisaImportResult`, `runner.py`'s import loop must execute the following
+recovery sequence before moving to the next row:
+
+1. **Reload** — call `page.reload()` and wait for network idle.
+   - If the resulting URL matches `TRANSACTIONS_URL`: session is still live;
+     continue to the next row.
+   - If the resulting URL matches `LOGIN_URL` (or `LOGIN_SUCCESS_INDICATOR`
+     is absent): session expired; proceed to step 2.
+2. **Re-login** — call `client.login(page, username, password)`.
+   - On success, call `client.save_session(context)` to refresh stored state;
+     continue to the next row.
+   - On failure, log a `FATAL` message (`"Re-login failed after error recovery; aborting run"`)
+     and return exit code `1` immediately — do not attempt further rows.
+3. **Log recovery action** — emit an `INFO` log line after every recovery
+   attempt:
+   `[recovery] row=<id> action=reload|relogin result=ok|failed`
+
+The failed row is **not** re-attempted in the same run; it stays out of
+`misa_import_state` and will be retried on the next invocation.
+
 ## 6. Logging Design
 - Use Python's standard `logging` module, configured similarly to
   `app/core/logging.py` if reusable, otherwise a small local
@@ -227,6 +262,10 @@ No other module should contain a hardcoded selector string.
   `INFO  [imported] id=<id> amount=<amount> account=<account> datetime=<dt>`
 - Per-row log line (on failure):
   `ERROR [failed]   id=<id> amount=<amount> account=<account> datetime=<dt> reason=<msg>`
+- Per-row recovery log line (after reload or re-login attempt):
+  `INFO  [recovery] row=<id> action=reload|relogin result=ok|failed`
+- Fatal log line (if re-login fails during recovery):
+  `FATAL Re-login failed after error recovery; aborting run`
 - End-of-run summary:
   `INFO  Summary: considered=<n> imported=<n> failed=<n> skipped(already imported)=<n>`
 
@@ -273,7 +312,9 @@ python -m app.misa.runner \
 - Login failure (bad credentials / persistent 2FA block): log a clear error
   and exit non-zero without attempting any imports.
 - Per-row failure (validation error, timeout, selector not found): caught,
-  logged, counted in summary, run continues to next row (requirements §7).
+  logged as `[failed]`, counted in summary; **then** the runner attempts
+  recovery (§5.4): reload first, re-login if the session is gone. If
+  re-login fails, abort immediately with exit code 1.
 - Unexpected browser crash: dedup store only reflects rows actually confirmed
   saved before the crash, so re-running is safe.
 
@@ -299,6 +340,9 @@ Same as requirements §8:
 3. Re-running does not re-import previously successful rows.
 4. Console/log output shows per-row success/failure and an end-of-run summary.
 5. No MISA credentials are stored in the repository.
+6. On any row import error, the runner performs a page reload (or re-login if
+   the session has expired) before continuing, emits a `[recovery]` log line,
+   and aborts with exit code 1 only if re-login itself fails.
 
 ## 12. Open Items
 1. ~~Real selectors/HTML for MISA login, Import button, and popup form

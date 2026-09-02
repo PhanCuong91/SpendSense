@@ -1,53 +1,69 @@
-# Run API locally (no Docker)
-run:
-    uvicorn app.main:app --reload --port 8000
+# ============================================================
+# SpendSense — Makefile
+# ============================================================
+
+# ---- Local development (no Docker) -------------------------
+
+# Run poller worker locally (continuous)
+poller:
+	python -m app.workers.poller_worker
+
+# Run poller in one-shot mode (poll once, then exit)
+poller-once:
+	POLL_ONCE=true python -m app.workers.poller_worker
+
+# Run MISA importer (dry-run by default; set MISA_ARGS for real run)
+# Example: make misa MISA_ARGS="--start-date 2024-01-01 --end-date 2024-01-31"
+misa:
+	python -m app.misa.runner --dry-run $(MISA_ARGS)
+
+# ---- Docker ------------------------------------------------
 
 # Build Docker image
 build:
-    docker-compose build
+	docker-compose build
 
-# Start all services
+# Start all services (with logs)
 up:
-    docker-compose up
+	docker-compose up
 
-# Start without logs tailing
+# Start without tailing logs
 upd:
-    docker-compose up -d
+	docker-compose up -d
 
 # Stop all containers
 down:
-    docker-compose down
+	docker-compose down
 
-# Reset database completely
+# Reset database volume completely
 reset-db:
-    docker-compose down -v
+	docker-compose down -v
 
-# Run Alembic migrations
+# ---- Database migrations (Alembic) -------------------------
+
 migrate:
-    alembic upgrade head
+	alembic upgrade head
 
 revision:
-    alembic revision --autogenerate -m "update"
+	alembic revision --autogenerate -m "update"
 
-# Run tests
+# ---- Tests -------------------------------------------------
+
 test:
-    pytest -q --disable-warnings --maxfail=1
+	pytest -q --disable-warnings --maxfail=1
 
-# Lint (optional)
+# ---- Code quality ------------------------------------------
+
 lint:
-    flake8 app
+	flake8 app
 
-# Format with Black
 fmt:
-    black app tests
+	black app tests
 
-# One-time setup for MISA export automation (installs the Playwright chromium browser)
+# ---- MISA setup --------------------------------------------
+
+# Install Playwright Chromium browser (required for misa.runner)
 misa-setup:
-    playwright install chromium
+	playwright install chromium
 
-
-migrate:
-    alembic upgrade head
-
-revision:
-    alembic revision --autogenerate -m "update
+.PHONY: poller poller-once misa build up upd down reset-db migrate revision test lint fmt misa-setup

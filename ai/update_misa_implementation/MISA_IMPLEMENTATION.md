@@ -132,6 +132,18 @@ else real import
             Runner -> Runner : log [imported]
         else failure
             Runner -> Runner : log [failed]
+            Runner -> Client : page.reload()
+            alt session still live (TRANSACTIONS_URL)
+                Runner -> Runner : log [recovery] action=reload result=ok
+            else session expired (LOGIN_URL)
+                Runner -> Client : login(page, username, password)
+                alt re-login ok
+                    Runner -> Runner : log [recovery] action=relogin result=ok
+                else re-login failed
+                    Runner -> Runner : log FATAL — abort run (exit 1)
+                    Runner --> User : exit 1
+                end
+            end
         end
     end
 
@@ -306,3 +318,8 @@ As of the latest implementation:
 - Date is filled correctly (no longer reset to today).
 - Dedup store records `tx.datetime` in ISO format.
 - Dry-run and real-import modes both operational.
+- **Done (2026-09-02)**: Error recovery on import failure — `_recover_session()`
+  helper added to `runner.py`; wired into `_run_import()` loop after every
+  failed row. Page reload attempted first; re-login triggered if session expired;
+  run aborted with exit code 1 if re-login fails. `[recovery]` log line emitted
+  on every attempt. 4 new tests in `test_misa_runner.py`; all 53 tests pass.
