@@ -18,7 +18,7 @@ EARN_CATEGORY = "Balance"
 # Map canonical account names produced by the parser/query layer to the exact
 # account names displayed in MISA's dropdown (case and diacritics matter there).
 MISA_ACCOUNT_NAME_MAP = {
-    "ACB": "ACB",
+    "ACB": "ATM",
     "ACB Online": "Acb online",
     "DBS": "DBS bank",
     "PayLah": "Paylah",
