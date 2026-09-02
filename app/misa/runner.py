@@ -147,6 +147,57 @@ def _resolve_secret(arn_env_var: str) -> Optional[str]:
     return boto3.client("secretsmanager").get_secret_value(SecretId=arn)["SecretString"]
 
 
+def _recover_session(
+    page,
+    context,
+    row_id: str,
+    username: str,
+    password: str,
+) -> bool:
+    """Attempt to recover the browser session after a row import failure.
+
+    Implements the reload / re-login recovery sequence from requirements §3.5
+    and design §5.4:
+
+    1. Reload the page and wait for network idle.
+    2. If the transactions page loaded successfully → session still live,
+       log ``[recovery] action=reload result=ok`` and return True.
+    3. If the page landed on the login URL (session expired) → attempt
+       re-login, persist the new session, and return True on success.
+    4. If re-login fails → log ``[recovery] action=relogin result=failed``
+       and return False (caller must abort the run).
+
+    Returns True if the browser is ready to continue importing, False if the
+    run must be aborted.
+    """
+    from app.misa import selectors as _sel
+
+    # Step 1 — reload
+    try:
+        page.reload(wait_until="networkidle")
+    except Exception as exc:
+        logger.warning("[recovery] row=%s reload raised: %s", row_id, exc)
+
+    # Step 2 — check whether we landed on the transactions page
+    try:
+        page.wait_for_selector(_sel.LOGIN_SUCCESS_INDICATOR, timeout=5_000)
+        logger.info("[recovery] row=%s action=reload result=ok", row_id)
+        return True
+    except Exception:
+        pass  # indicator not found → session likely expired
+
+    # Step 3 — re-login
+    logger.info("[recovery] row=%s action=relogin attempting...", row_id)
+    logged_in = client.login(page, username, password)
+    if logged_in:
+        client.save_session(context)
+        logger.info("[recovery] row=%s action=relogin result=ok", row_id)
+        return True
+
+    logger.error("[recovery] row=%s action=relogin result=failed", row_id)
+    return False
+
+
 def _run_import(planned: List[PlannedRow], considered: int, skipped: int, dedup_store: DedupStore, headed: bool) -> int:
     username = (
         os.environ.get("MISA_USERNAME")
@@ -227,6 +278,13 @@ def _run_import(planned: List[PlannedRow], considered: int, skipped: int, dedup_
                         tx.datetime,
                         result.error_message,
                     )
+                    # §3.5 / §5.4: attempt session recovery before next row
+                    session_ok = _recover_session(page, context, str(row.id), username, password)
+                    if not session_ok:
+                        logger.error(
+                            "Re-login failed after error recovery; aborting run"
+                        )
+                        return 1
         finally:
             browser.close()
 

@@ -81,6 +81,44 @@ The implementation lives in `app/misa/client.py::add_transaction()`, which
 now handles Spend/Earn tab switching, the post-tab-switch settle wait,
 category option click, and Save-and-close.
 
+### 3.5 Error Recovery — Reload / Re-login on Import Failure
+
+When an error occurs during an individual transaction import (e.g. the popup
+gets into a broken state, a network blip causes the page to go blank, or the
+browser context becomes stale), the runner must attempt to recover before
+moving on to the next row rather than failing the remainder of the run silently.
+
+**Recovery sequence (applied per-row on any exception or detected error):**
+
+1. **Detect the failure** — catch any Playwright exception (`TimeoutError`,
+   `Error`) or a detected `ERROR_INDICATOR` on the page after the Save
+   attempt.
+2. **Attempt page reload first** — call `page.reload()` and wait for the
+   transactions page to be ready (network idle / `TRANSACTIONS_URL` loaded).
+   - If the reload lands on the login page (session expired), proceed to
+     step 3.
+   - If the reload lands on the transactions page successfully, resume
+     importing the next row from that page — **do not retry the failed row**
+     (it has not been marked as imported, so it will be picked up on the
+     next runner invocation).
+3. **Re-login if the session is gone** — if after the reload the page is on
+   the login URL or the `LOGIN_SUCCESS_INDICATOR` is absent, call
+   `client.login(page, username, password)` and, on success,
+   `client.save_session(context)` to refresh the stored session state.
+   - If re-login succeeds, resume importing the next row.
+   - If re-login fails, **abort the run** immediately (log a fatal error and
+     return exit code 1) — continuing without a valid session would silently
+     skip all remaining rows.
+4. **Log the recovery action** — always emit a log line indicating which row
+   failed, what recovery was attempted (reload vs re-login), and whether it
+   succeeded, so post-run analysis can identify flaky sessions or persistent
+   MISA UI bugs.
+
+**Scope:** this recovery applies only between rows, not within the steps of
+a single row's import flow (§3.4). A row whose import raises an error is
+logged as failed and is eligible for retry on the next run via the dedup
+store (§4).
+
 ## 4. Duplicate Import Prevention
 - Maintain the import state in the **SQLite database** itself, in a dedicated table
   `misa_import_state` (see §4.1), instead of a local JSON file.
@@ -151,7 +189,10 @@ DB files that pre-date the Alembic migration.
   dedup state table; a mid-run crash must not double-import rows already confirmed
   as saved.
 - **Resilience**: individual row failures (e.g. a validation error in the MISA form)
-  must not stop the whole run — log and continue to the next row.
+  must not stop the whole run — log and continue to the next row. On any error,
+  the runner must attempt to recover the browser session via a page reload or
+  re-login before continuing (see §3.5). The run is aborted only when re-login
+  itself fails, to prevent silently skipping rows without a valid session.
 
 ## 8. Acceptance Criteria
 1. Running the script imports all not-yet-imported Spend/Earn rows from
@@ -162,6 +203,11 @@ DB files that pre-date the Alembic migration.
 4. Console/log output clearly shows per-row success/failure and an end-of-run
    summary.
 5. No MISA credentials are stored in the repository.
+6. When a row import fails, the runner performs a page reload (or re-login if
+   the session has expired) before continuing to the next row. The failed row
+   is logged clearly and remains eligible for retry on the next run. If
+   re-login itself fails, the run aborts with a non-zero exit code and a fatal
+   log message.
 
 ## 9. Testing Requirements
 Tests should follow the existing convention in `tests/` (pytest, e.g.
