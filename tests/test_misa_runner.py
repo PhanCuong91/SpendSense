@@ -327,3 +327,153 @@ def test_gitignore_covers_misa_secrets_and_session_state():
     assert "storage_state.json" in content
     assert "app.log" in content
 
+
+# ---------------------------------------------------------------------------
+# §5.3 items 4–5: Error recovery — reload / re-login (requirements §3.5)
+# ---------------------------------------------------------------------------
+
+
+class _FakePageWithReload:
+    """Fake Page that records reload() calls and controls wait_for_selector."""
+
+    def __init__(self, *, selector_ok: bool = True):
+        self.reloaded = False
+        self._selector_ok = selector_ok
+
+    def reload(self, wait_until=None):
+        self.reloaded = True
+
+    def wait_for_selector(self, selector, timeout=None):
+        if not self._selector_ok:
+            raise Exception("selector not found")
+
+
+def test_recovery_reload_ok_continues_to_next_row(monkeypatch, db_session, log_records):
+    """After a failed row, page.reload() succeeds → [recovery] action=reload result=ok logged,
+    run continues and remaining rows are imported."""
+    ok_row, ok_cls, ok_tx = _planned_row(db_session, 1.0, account="Trust")
+    bad_row, bad_cls, bad_tx = _planned_row(db_session, 2.0, account="PayLah")
+    # bad_row comes first so the recovery path is exercised before ok_row
+    planned = [(bad_row, bad_cls, bad_tx), (ok_row, ok_cls, ok_tx)]
+
+    monkeypatch.setenv("MISA_USERNAME", "u")
+    monkeypatch.setenv("MISA_PASSWORD", "p")
+    monkeypatch.setattr(runner.client, "is_logged_in", lambda page: True)
+    monkeypatch.setattr(runner.client, "login", lambda page, u, p: True)
+    monkeypatch.setattr(runner.client, "save_session", lambda ctx, path=None: None)
+
+    fake_page = _FakePageWithReload(selector_ok=True)  # reload lands on transactions page
+
+    def fake_add(page, tx):
+        if tx is bad_tx:
+            return MisaImportResult(success=False, error_message="timeout")
+        return MisaImportResult(success=True)
+
+    monkeypatch.setattr(runner.client, "add_transaction", fake_add)
+    monkeypatch.setattr(runner, "_recover_session",
+        lambda page, ctx, row_id, username, password: (
+            runner.logger.info("[recovery] row=%s action=reload result=ok", row_id) or True
+        )
+    )
+    monkeypatch.setattr(runner, "sync_playwright", _fake_sync_playwright_factory())
+
+    dedup_store = DedupStore(db=db_session)
+    exit_code = runner._run_import(planned, considered=2, skipped=0, dedup_store=dedup_store, headed=False)
+
+    assert exit_code == 1  # one failure → non-zero
+    info_msgs = _messages(log_records, logging.INFO)
+    assert any("[recovery]" in m and "action=reload result=ok" in m for m in info_msgs)
+    # ok_row must still be imported despite the earlier failure
+    assert dedup_store.is_imported(ok_row.id) is True
+    assert dedup_store.is_imported(bad_row.id) is False
+
+
+def test_recovery_relogin_ok_continues_to_next_row(monkeypatch, db_session, log_records):
+    """After a failed row, reload lands on login page → re-login succeeds →
+    [recovery] action=relogin result=ok logged, run continues."""
+    bad_row, bad_cls, bad_tx = _planned_row(db_session, 3.0, account="ACB")
+    ok_row, ok_cls, ok_tx = _planned_row(db_session, 4.0, account="Trust")
+    planned = [(bad_row, bad_cls, bad_tx), (ok_row, ok_cls, ok_tx)]
+
+    monkeypatch.setenv("MISA_USERNAME", "u")
+    monkeypatch.setenv("MISA_PASSWORD", "p")
+    monkeypatch.setattr(runner.client, "is_logged_in", lambda page: True)
+    monkeypatch.setattr(runner.client, "login", lambda page, u, p: True)
+    monkeypatch.setattr(runner.client, "save_session", lambda ctx, path=None: None)
+
+    def fake_add(page, tx):
+        if tx is bad_tx:
+            return MisaImportResult(success=False, error_message="popup broke")
+        return MisaImportResult(success=True)
+
+    monkeypatch.setattr(runner.client, "add_transaction", fake_add)
+    # Simulate: reload → selector fails (session expired) → relogin succeeds
+    monkeypatch.setattr(runner, "_recover_session",
+        lambda page, ctx, row_id, username, password: (
+            runner.logger.info("[recovery] row=%s action=relogin result=ok", row_id) or True
+        )
+    )
+    monkeypatch.setattr(runner, "sync_playwright", _fake_sync_playwright_factory())
+
+    dedup_store = DedupStore(db=db_session)
+    exit_code = runner._run_import(planned, considered=2, skipped=0, dedup_store=dedup_store, headed=False)
+
+    assert exit_code == 1  # one failure
+    info_msgs = _messages(log_records, logging.INFO)
+    assert any("[recovery]" in m and "action=relogin result=ok" in m for m in info_msgs)
+    assert dedup_store.is_imported(ok_row.id) is True
+
+
+def test_recovery_relogin_failed_aborts_run(monkeypatch, db_session, log_records):
+    """After a failed row, re-login also fails → run aborts immediately with
+    exit code 1 and 'Re-login failed after error recovery' error logged.
+    Remaining rows are NOT imported."""
+    bad_row, bad_cls, bad_tx = _planned_row(db_session, 5.0, account="ACB")
+    next_row, next_cls, next_tx = _planned_row(db_session, 6.0, account="Trust")
+    planned = [(bad_row, bad_cls, bad_tx), (next_row, next_cls, next_tx)]
+
+    monkeypatch.setenv("MISA_USERNAME", "u")
+    monkeypatch.setenv("MISA_PASSWORD", "p")
+    monkeypatch.setattr(runner.client, "is_logged_in", lambda page: True)
+    monkeypatch.setattr(runner.client, "login", lambda page, u, p: True)
+    monkeypatch.setattr(runner.client, "save_session", lambda ctx, path=None: None)
+
+    def fake_add(page, tx):
+        if tx is bad_tx:
+            return MisaImportResult(success=False, error_message="crash")
+        return MisaImportResult(success=True)
+
+    monkeypatch.setattr(runner.client, "add_transaction", fake_add)
+    # Simulate: reload fails AND re-login fails
+    monkeypatch.setattr(runner, "_recover_session", lambda *args, **kwargs: False)
+    monkeypatch.setattr(runner, "sync_playwright", _fake_sync_playwright_factory())
+
+    dedup_store = DedupStore(db=db_session)
+    exit_code = runner._run_import(planned, considered=2, skipped=0, dedup_store=dedup_store, headed=False)
+
+    assert exit_code == 1
+    error_msgs = _messages(log_records, logging.ERROR)
+    assert any("Re-login failed after error recovery" in m for m in error_msgs)
+    # next_row must NOT have been attempted
+    assert dedup_store.is_imported(next_row.id) is False
+
+
+def test_recovery_log_line_emitted_on_reload_ok(monkeypatch, db_session, log_records):
+    """Unit-test _recover_session() directly: when reload succeeds (selector found),
+    a [recovery] action=reload result=ok INFO line is emitted and True is returned."""
+    from app.misa.runner import _recover_session
+
+    fake_page = _FakePageWithReload(selector_ok=True)
+    fake_context = _FakeContext()
+
+    # login/save_session must not be called when reload succeeds
+    monkeypatch.setattr(runner.client, "login", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("login called")))
+    monkeypatch.setattr(runner.client, "save_session", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("save called")))
+
+    result = _recover_session(fake_page, fake_context, row_id="abc123", username="u", password="p")
+
+    assert result is True
+    assert fake_page.reloaded is True
+    info_msgs = _messages(log_records, logging.INFO)
+    assert any("[recovery]" in m and "action=reload result=ok" in m for m in info_msgs)
+

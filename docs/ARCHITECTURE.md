@@ -686,29 +686,29 @@ skinparam arrowColor #0288D1
 skinparam arrowThickness 2
 
 start
-#FFD700:Scheduled Start (22:00 SGT);
-#FFF59D:AppAutoscaling: desired_count = 1;
-#E1F5FE:ECS launches Poller Task (app_task);
-#B2EBF2:Restore SQLite from S3 if EFS empty;
-#C8E6C9:Poll Gmail API (ACB / DBS / PayLah / TrustBank);
-#C8E6C9:Parse emails -> parsed_transaction_candidate;
-#B2EBF2:Write SQLite to EFS;
-#FFCC80:Scheduled Stop (22:20 SGT);
-#FFF59D:AppAutoscaling: desired_count = 0;
-#E1F5FE:ECS stops Poller Task;
-#FFDAB9:EventBridge app_task_stopped fires;
-#FFDAB9:ECS launches MISA Runner Task (misa_task);
-#FFE4B5:Read MISA credentials from SSM Parameter Store;
-#FFE4B5:Playwright -> classify Spend/Earn -> import to MISA;
+:Scheduled Start (22:00 SGT); <<#FFD700>>
+:AppAutoscaling: desired_count = 1; <<#FFF59D>>
+:ECS launches Poller Task (app_task); <<#E1F5FE>>
+:Restore SQLite from S3 if EFS empty; <<#B2EBF2>>
+:Poll Gmail API (ACB / DBS / PayLah / TrustBank); <<#C8E6C9>>
+:Parse emails -> parsed_transaction_candidate; <<#C8E6C9>>
+:Write SQLite to EFS; <<#B2EBF2>>
+:Scheduled Stop (22:20 SGT); <<#FFCC80>>
+:AppAutoscaling: desired_count = 0; <<#FFF59D>>
+:ECS stops Poller Task; <<#E1F5FE>>
+:EventBridge app_task_stopped fires; <<#FFDAB9>>
+:ECS launches MISA Runner Task (misa_task); <<#FFDAB9>>
+:Read MISA credentials from SSM Parameter Store; <<#FFE4B5>>
+:Playwright -> classify Spend/Earn -> import to MISA; <<#FFE4B5>>
 if (any [failed] rows?) then (yes)
-    #FFCCCC:CloudWatch Alarm fires;
-    #FFCCCC:SNS email alert sent;
+    :CloudWatch Alarm fires; <<#FFCCCC>>
+    :SNS email alert sent; <<#FFCCCC>>
 else (no)
 endif
-#FFF9C4:EventBridge misa_task_stopped fires;
-#F5F5DC:ECS launches Backup Task;
-#B2EBF2:aws s3 cp txdb.sqlite3 to S3;
-#F5F5F5:Wait until next day;
+:EventBridge misa_task_stopped fires; <<#FFF9C4>>
+:ECS launches Backup Task; <<#F5F5DC>>
+:aws s3 cp txdb.sqlite3 to S3; <<#B2EBF2>>
+:Wait until next day; <<#F5F5F5>>
 stop
 
 @enduml
