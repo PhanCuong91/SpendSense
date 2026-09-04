@@ -18,14 +18,14 @@ output "efs_file_system_id" {
   value       = aws_efs_file_system.app_fs.id
 }
 
-output "gmail_credentials_secret_arn" {
-  description = "ARN of the created Gmail credentials secret."
-  value       = aws_secretsmanager_secret.gmail_credentials.arn
+output "gmail_credentials_ssm_arn" {
+  description = "ARN of the created Gmail credentials SSM parameter."
+  value       = aws_ssm_parameter.gmail_credentials.arn
 }
 
-output "gmail_token_secret_arn" {
-  description = "ARN of the created Gmail token secret."
-  value       = aws_secretsmanager_secret.gmail_token.arn
+output "gmail_token_ssm_arn" {
+  description = "ARN of the created Gmail token SSM parameter."
+  value       = aws_ssm_parameter.gmail_token.arn
 }
 
 output "misa_task_definition_arn" {
