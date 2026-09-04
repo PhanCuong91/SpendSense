@@ -222,11 +222,11 @@ resource "aws_ecs_task_definition" "app_task" {
       secrets = [
         {
           name      = "GMAIL_CREDENTIALS_JSON"
-          valueFrom = aws_secretsmanager_secret.gmail_credentials.arn
+          valueFrom = aws_ssm_parameter.gmail_credentials.arn
         },
         {
           name      = "GMAIL_TOKEN_JSON"
-          valueFrom = aws_secretsmanager_secret.gmail_token.arn
+          valueFrom = aws_ssm_parameter.gmail_token.arn
         }
       ]
 

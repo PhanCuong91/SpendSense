@@ -92,11 +92,6 @@ jobs:
       AWS_REGION: ap-southeast-1
       PROJECT_NAME: spend_sense
       ECR_REGISTRY: 359615771071.dkr.ecr
-      SECRET_CREDENTIAL_NAME: spendsense_gmail_credentials_json
-      SECRET_TOKEN_NAME: spendsense_gmail_token_json
-      AWS_SECRET_NAME: aws_secretsmanager_secret
-      AWS_SECRET_RESOURCE_CREDENTIAL: gmail_credentials
-      AWS_SECRET_RESOURCE_TOKEN: gmail_token
       TF_STATE_BUCKET: spendsense-tfstate-359615771071
       TF_STATE_KEY: spendsense/terraform.tfstate
 
@@ -178,27 +173,10 @@ jobs:
       working-directory: deploy_1
       run: terraform init -input=false
 
-    - name: Import existing secrets and SSM parameters if not already tracked in state
+    - name: Import existing SSM parameters if not already tracked in state
       working-directory: deploy_1
       run: |
         set -euo pipefail
-        import_if_missing() {
-          local resource_addr="$1"
-          local secret_name="$2"
-          if terraform state show "${resource_addr}" >/dev/null 2>&1; then
-            echo "${resource_addr} already tracked in state, skipping import."
-            return 0
-          fi
-          local arn
-          arn=$(aws secretsmanager describe-secret --secret-id "${secret_name}" --query 'ARN' --output text 2>/dev/null || true)
-          if [ -z "${arn}" ] || [ "${arn}" = "None" ]; then
-            echo "${secret_name} does not exist yet, Terraform will create it."
-            return 0
-          fi
-          aws secretsmanager restore-secret --secret-id "${secret_name}" --region "${AWS_REGION}" 2>/dev/null || true
-          terraform import "${resource_addr}" "${arn}"
-        }
-
         import_ssm_if_missing() {
           local resource_addr="$1"
           local param_name="$2"
@@ -216,8 +194,9 @@ jobs:
           terraform import "${resource_addr}" "${param_name}"
         }
 
-        import_if_missing "${AWS_SECRET_NAME}.${AWS_SECRET_RESOURCE_CREDENTIAL}" "${SECRET_CREDENTIAL_NAME}"
-        import_if_missing "${AWS_SECRET_NAME}.${AWS_SECRET_RESOURCE_TOKEN}" "${SECRET_TOKEN_NAME}"
+        # Import Gmail SSM Parameters if they exist in AWS
+        import_ssm_if_missing "aws_ssm_parameter.gmail_credentials" "/spendsense/gmail_credentials_json"
+        import_ssm_if_missing "aws_ssm_parameter.gmail_token" "/spendsense/gmail_token_json"
 
         # Import MISA SSM Parameters if they exist in AWS
         import_ssm_if_missing "aws_ssm_parameter.misa_username[0]" "/spendsense/misa_username"

@@ -107,11 +107,11 @@ terraform init -input=false
 Remote state: `s3://spendsense-tfstate-359615771071/spendsense/terraform.tfstate`
 
 ### Step 5 — Import existing AWS resources (idempotent)
-Safely imports existing AWS Secrets Manager secrets and SSM parameters into Terraform state if not already tracked. Prevents "resource already exists" errors on re-deployments.
+Safely imports existing AWS SSM parameters into Terraform state if not already tracked. Prevents "resource already exists" errors on re-deployments.
 
 Resources checked:
-- `aws_secretsmanager_secret.gmail_credentials`
-- `aws_secretsmanager_secret.gmail_token`
+- `aws_ssm_parameter.gmail_credentials`
+- `aws_ssm_parameter.gmail_token`
 - `aws_ssm_parameter.misa_username[0]`
 - `aws_ssm_parameter.misa_password[0]`
 

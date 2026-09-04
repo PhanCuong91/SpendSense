@@ -12,8 +12,7 @@ See also: [`deploy_1/ARCHITECTURE.md`](../deploy_1/ARCHITECTURE.md) for detailed
 |-----------|-------------|
 | Container image registry | Amazon ECR |
 | Container runtime | Amazon ECS (Fargate or EC2) |
-| Secrets | AWS Secrets Manager |
-| MISA credentials | AWS Systems Manager (SSM) Parameter Store |
+| Secrets & Credentials | AWS Systems Manager (SSM) Parameter Store |
 | Terraform remote state | Amazon S3 (`spendsense-tfstate-359615771071`) |
 | Region | `ap-southeast-1` (Singapore) |
 
@@ -83,14 +82,16 @@ terraform apply -var="app_image_tag=$IMAGE_TAG" -auto-approve
 
 ## Secrets Setup
 
-### Gmail credentials (AWS Secrets Manager)
+All secrets are stored in **AWS Systems Manager (SSM) Parameter Store** as `SecureString` parameters (encrypted at rest with KMS) to stay 100% within the free tier.
 
-The GitHub Actions CI/CD pipeline reads Gmail credentials from GitHub Secrets and passes them to Terraform as `TF_VAR_*`. Terraform stores them in AWS Secrets Manager.
+### Gmail credentials (SSM Parameter Store)
 
-| Terraform variable | AWS Secret name |
-|-------------------|-----------------|
-| `TF_VAR_gmail_credentials_json` | `spendsense_gmail_credentials_json` |
-| `TF_VAR_gmail_token_json` | `spendsense_gmail_token_json` |
+The GitHub Actions CI/CD pipeline reads Gmail credentials from GitHub Secrets and passes them to Terraform as `TF_VAR_*`. Terraform stores them in AWS SSM Parameter Store as `SecureString`.
+
+| Terraform variable | AWS SSM Parameter name | Type |
+|-------------------|------------------------|------|
+| `TF_VAR_gmail_credentials_json` | `/spendsense/gmail_credentials_json` | `SecureString` |
+| `TF_VAR_gmail_token_json` | `/spendsense/gmail_token_json` | `SecureString` |
 
 ### MISA credentials (SSM Parameter Store)
 
@@ -120,7 +121,7 @@ aws ssm put-parameter \
 
 | File | Purpose |
 |------|---------|
-| `main.tf` | Core infrastructure (ECR, ECS, VPC, IAM, Secrets Manager) |
+| `main.tf` | Core infrastructure (ECR, ECS, VPC, IAM, SSM Parameter Store) |
 | `misa_runner.tf` | MISA runner ECS task definition and scheduled job |
 | `variables.tf` | Input variables |
 | `outputs.tf` | Output values (e.g. ECR repo URL) |
@@ -223,9 +224,9 @@ package "CI / Deploy" {
     rectangle "S3 - Terraform State\nspendsense-tfstate-*" as TFS3 #E8F5E9
 }
 
-package "Secrets" {
-    rectangle "Secrets Manager\ngmail_credentials_json\ngmail_token_json" as SM #FFEBEE
-    rectangle "SSM Parameter Store\n/spendsense/misa_username\n/spendsense/misa_password" as SSM #FFEBEE
+package "Secrets (SSM Parameter Store)" {
+    rectangle "SSM: Gmail\n/spendsense/gmail_credentials_json\n/spendsense/gmail_token_json" as SSM_GMAIL #FFEBEE
+    rectangle "SSM: MISA\n/spendsense/misa_username\n/spendsense/misa_password" as SSM_MISA #FFEBEE
 }
 
 package "AppAutoscaling Schedule" {
@@ -255,16 +256,16 @@ package "Monitoring" {
     rectangle "SNS Topic\nemail subscription" as SNS #FCE4EC
 }
 
-GH     -[#FB8C00]->  ECR    : docker push
-GH     -[#43A047]->  TFS3   : terraform apply
-GH     -[#E53935]->  SM     : writes secrets
+GH     -[#FB8C00]->  ECR       : docker push
+GH     -[#43A047]->  TFS3      : terraform apply
+GH     -[#E53935]->  SSM_GMAIL : writes secrets
 
-ECR    -[#1E88E5]->  POLLER : image pull
-ECR    -[#1E88E5]->  MISA   : image pull
-ECR    -[#1E88E5]->  BACKUP : image pull
+ECR    -[#1E88E5]->  POLLER    : image pull
+ECR    -[#1E88E5]->  MISA      : image pull
+ECR    -[#1E88E5]->  BACKUP    : image pull
 
-SM     -[#E53935]->  POLLER : GMAIL_CREDENTIALS_JSON\nGMAIL_TOKEN_JSON
-SSM    -[#E53935]->  MISA   : MISA_USERNAME\nMISA_PASSWORD
+SSM_GMAIL -[#E53935]-> POLLER  : GMAIL_CREDENTIALS_JSON\nGMAIL_TOKEN_JSON
+SSM_MISA  -[#E53935]-> MISA    : MISA_USERNAME\nMISA_PASSWORD
 
 START  -[#F9A825]->  POLLER : desired_count 0 to 1
 STOP   -[#F9A825]->  POLLER : desired_count 1 to 0
@@ -324,15 +325,15 @@ skinparam database {
 }
 
 package "IAM Roles" {
-    rectangle "ecs-execution-role\nECR pull\nSecrets Manager read" as EXEC_ROLE #F3E5F5
+    rectangle "ecs-execution-role\nECR pull\nSSM Parameter Store read" as EXEC_ROLE #F3E5F5
     rectangle "ecs-task-role\nS3 PutObject\nS3 GetObject (backup bucket)" as TASK_ROLE #F3E5F5
     rectangle "misa-task-role\nSSM GetParameter\n(misa credentials only)" as MISA_ROLE #F3E5F5
     rectangle "eventbridge-ecs-role\necs:RunTask\niam:PassRole" as EB_ROLE #F3E5F5
 }
 
-package "Secrets and Config" {
-    rectangle "Secrets Manager\ngmail_credentials_json\ngmail_token_json" as SM #FFEBEE
-    rectangle "SSM Parameter Store\n/spendsense/misa_username\n/spendsense/misa_password" as SSM #FFEBEE
+package "Secrets and Config (SSM Parameter Store)" {
+    rectangle "SSM: Gmail\n/spendsense/gmail_credentials_json\n/spendsense/gmail_token_json" as SSM_GMAIL #FFEBEE
+    rectangle "SSM: MISA\n/spendsense/misa_username\n/spendsense/misa_password" as SSM_MISA #FFEBEE
 }
 
 package "VPC  ap-southeast-1  (vpc-0e67ef784)" {
@@ -367,8 +368,8 @@ MISA_ROLE -[#8E24AA]->  MISA   : task role (SSM read)
 
 EB_ROLE   -[#8E24AA]->  EB     : RunTask permission
 
-SM    -[#E53935]->  POLLER : GMAIL_CREDENTIALS_JSON\nGMAIL_TOKEN_JSON
-SSM   -[#E53935]->  MISA   : MISA_USERNAME\nMISA_PASSWORD
+SSM_GMAIL -[#E53935]->  POLLER : GMAIL_CREDENTIALS_JSON\nGMAIL_TOKEN_JSON
+SSM_MISA  -[#E53935]->  MISA   : MISA_USERNAME\nMISA_PASSWORD
 
 ECR   -[#FB8C00]->  POLLER : image pull
 ECR   -[#FB8C00]->  MISA   : image pull
