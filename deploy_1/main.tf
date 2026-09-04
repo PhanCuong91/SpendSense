@@ -62,24 +62,20 @@ resource "aws_ecr_repository" "app" {
   tags = local.common_tags
 }
 
-resource "aws_secretsmanager_secret" "gmail_credentials" {
-  name = "${var.project_name}_gmail_credentials_json"
-  tags = local.common_tags
+resource "aws_ssm_parameter" "gmail_credentials" {
+  name        = "/${var.project_name}/gmail_credentials_json"
+  description = "Gmail OAuth2 credentials JSON"
+  type        = "SecureString"
+  value       = var.gmail_credentials_json != null ? var.gmail_credentials_json : file(var.gmail_credentials_file)
+  tags        = local.common_tags
 }
 
-resource "aws_secretsmanager_secret_version" "gmail_credentials_version" {
-  secret_id     = aws_secretsmanager_secret.gmail_credentials.id
-  secret_string = var.gmail_credentials_json != null ? var.gmail_credentials_json : file(var.gmail_credentials_file)
-}
-
-resource "aws_secretsmanager_secret" "gmail_token" {
-  name = "${var.project_name}_gmail_token_json"
-  tags = local.common_tags
-}
-
-resource "aws_secretsmanager_secret_version" "gmail_token_version" {
-  secret_id     = aws_secretsmanager_secret.gmail_token.id
-  secret_string = var.gmail_token_json != null ? var.gmail_token_json : file(var.gmail_token_file)
+resource "aws_ssm_parameter" "gmail_token" {
+  name        = "/${var.project_name}/gmail_token_json"
+  description = "Gmail OAuth2 token JSON"
+  type        = "SecureString"
+  value       = var.gmail_token_json != null ? var.gmail_token_json : file(var.gmail_token_file)
+  tags        = local.common_tags
 }
 
 resource "aws_efs_file_system" "app_fs" {
@@ -191,13 +187,19 @@ resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
       {
         Effect = "Allow"
         Action = [
-          "secretsmanager:GetSecretValue",
-          "kms:Decrypt"
+          "ssm:GetParameters"
         ]
         Resource = [
-          aws_secretsmanager_secret.gmail_credentials.arn,
-          aws_secretsmanager_secret.gmail_token.arn
+          aws_ssm_parameter.gmail_credentials.arn,
+          aws_ssm_parameter.gmail_token.arn
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt"
+        ]
+        Resource = ["*"]
       }
     ]
   })
@@ -296,11 +298,11 @@ resource "aws_ecs_task_definition" "app_task" {
       secrets = [
         {
           name      = "GMAIL_CREDENTIALS_JSON"
-          valueFrom = aws_secretsmanager_secret.gmail_credentials.arn
+          valueFrom = aws_ssm_parameter.gmail_credentials.arn
         },
         {
           name      = "GMAIL_TOKEN_JSON"
-          valueFrom = aws_secretsmanager_secret.gmail_token.arn
+          valueFrom = aws_ssm_parameter.gmail_token.arn
         }
       ]
 
