@@ -325,12 +325,9 @@ package "Container Registry" <<registry>> {
     [aws_ecr_repository\napp] as ECR <<registry>>
 }
 
-package "Secrets Manager" <<secrets>> {
-    [aws_secretsmanager_secret\ngmail_credentials] as SEC_CREDS <<secrets>>
-    [aws_secretsmanager_secret\ngmail_token] as SEC_TOKEN <<secrets>>
-}
-
 package "SSM Parameter Store" <<ssm>> {
+    [aws_ssm_parameter\ngmail_credentials] as SSM_GMAIL_CREDS <<ssm>>
+    [aws_ssm_parameter\ngmail_token] as SSM_GMAIL_TOKEN <<ssm>>
     [aws_ssm_parameter\nmisa_username] as SSM_USER <<ssm>>
     [aws_ssm_parameter\nmisa_password] as SSM_PASS <<ssm>>
 }
@@ -392,11 +389,9 @@ ECR --> APP_TASK #Crimson
 ECR --> MISA_TASK #Crimson
 ECR --> BACKUP_TASK #Crimson
 
-' Secrets -> Tasks
-SEC_CREDS --> APP_TASK #DarkViolet
-SEC_TOKEN --> APP_TASK #DarkViolet
-
-' SSM -> MISA task
+' SSM -> Tasks
+SSM_GMAIL_CREDS --> APP_TASK #MediumSlateBlue
+SSM_GMAIL_TOKEN --> APP_TASK #MediumSlateBlue
 SSM_USER --> MISA_TASK #MediumSlateBlue
 SSM_PASS --> MISA_TASK #MediumSlateBlue
 
@@ -560,33 +555,27 @@ S3 --> Backup: uploaded #SteelBlue
 |----------|---------|
 | `aws_ecr_repository.app` | Stores the `spend_sense` Docker image. Scan on push enabled. All 3 tasks pull from this same repo, role-switched by `APP_ROLE` env var. |
 
-### 3.2 Secrets Manager
+### 3.2 SSM Parameter Store (Secrets & Credentials)
 
-| Resource | Secret name | Consumed by |
-|----------|-------------|------------|
-| `aws_secretsmanager_secret.gmail_credentials` | `spendsense_gmail_credentials_json` | Poller task (`GMAIL_CREDENTIALS_JSON`) |
-| `aws_secretsmanager_secret.gmail_token` | `spendsense_gmail_token_json` | Poller task (`GMAIL_TOKEN_JSON`) |
-
-Injected as environment variables into the ECS container via `secrets` in the task definition.
-
-### 3.3 SSM Parameter Store (MISA credentials)
+All secrets and credentials use **AWS Systems Manager (SSM) Parameter Store** (`SecureString` encrypted with KMS) instead of AWS Secrets Manager to remain 100% within the free tier.
 
 | Resource | Parameter path | Type | Consumed by |
 |----------|---------------|------|------------|
+| `aws_ssm_parameter.gmail_credentials` | `/spendsense/gmail_credentials_json` | `SecureString` | Poller task (`GMAIL_CREDENTIALS_JSON`) |
+| `aws_ssm_parameter.gmail_token` | `/spendsense/gmail_token_json` | `SecureString` | Poller task (`GMAIL_TOKEN_JSON`) |
 | `aws_ssm_parameter.misa_username` | `/spendsense/misa_username` | `SecureString` | MISA runner task |
 | `aws_ssm_parameter.misa_password` | `/spendsense/misa_password` | `SecureString` | MISA runner task |
 
-> **Why SSM instead of Secrets Manager?** SSM Parameter Store SecureString is free-tier; Secrets Manager charges per secret per month. MISA credentials only need basic encryption, not the rotation features of Secrets Manager.
+> **Why SSM instead of Secrets Manager?** SSM Parameter Store standard parameters are free tier ($0.00/month); Secrets Manager charges $0.40 per secret per month ($1.60/month for 4 secrets). The credentials only require encryption at rest, not automatic secret rotation.
 
-Values are set with `placeholder` during `terraform apply` and updated manually afterward:
+- **Gmail credentials/token**: Injected as environment variables into the poller ECS container via the `secrets` block in `app_task` (resolved by the ECS agent using execution role permissions `ssm:GetParameters` and `kms:Decrypt`).
+- **MISA credentials**: Read at runtime by `misa.runner` using `misa-task-role` with `ssm:GetParameter`. Values can be set or updated directly via CLI:
 ```bash
-aws ssm put-parameter --name /spendsense/misa_username --value "your@email.com" --overwrite
-aws ssm put-parameter --name /spendsense/misa_password --value "yourpassword"   --overwrite
+aws ssm put-parameter --name /spendsense/misa_username --value "your@email.com" --type SecureString --overwrite
+aws ssm put-parameter --name /spendsense/misa_password --value "yourpassword"   --type SecureString --overwrite
 ```
 
-The `misa-task-role` IAM policy grants `ssm:GetParameter` on these two ARNs only (least privilege).
-
-### 3.4 Shared Storage (EFS)
+### 3.3 Shared Storage (EFS)
 
 | Resource | Purpose |
 |----------|---------|
@@ -596,17 +585,17 @@ The `misa-task-role` IAM policy grants `ssm:GetParameter` on these two ARNs only
 
 All three tasks (poller, MISA runner, backup) mount the same EFS access point at `/app/data`.
 
-### 3.5 IAM Roles
+### 3.4 IAM Roles
 
 | Resource | Permissions | Used by |
 |----------|-------------|--------|
-| `aws_iam_role.ecs_task_execution_role` | ECR image pull, CloudWatch Logs write, Secrets Manager `GetSecretValue` | All tasks (execution role) |
+| `aws_iam_role.ecs_task_execution_role` | ECR image pull, CloudWatch Logs write, SSM `GetParameters`, KMS `Decrypt` | All tasks (execution role) |
 | `aws_iam_role.ecs_task_role` | S3 `ListBucket`, `GetObject`, `PutObject` on backup bucket | Poller task, backup task |
 | `aws_iam_role.misa_task_role` | SSM `GetParameter` on `/spendsense/misa_username` and `/spendsense/misa_password` only | MISA runner task |
 | `aws_iam_role.eventbridge_ecs_role` | `ecs:RunTask` on backup + MISA task definitions; `iam:PassRole` | EventBridge (app_task_stopped rule) |
 | `aws_iam_role.eventbridge_misa_ecs_role` | `ecs:RunTask` on backup task definition; `iam:PassRole` | EventBridge (misa_task_stopped rule) |
 
-### 3.6 Network / Security
+### 3.5 Network / Security
 
 | Resource | Purpose |
 |----------|---------|
@@ -735,6 +724,6 @@ stop
 
 1. **`app_task` command has stale flags**: the container command includes `--host 0.0.0.0 --port 8000` which the `poller_worker` does not accept.
 2. **No container health check**: ECS only detects task exit, not application-level health.
-3. **Public IPs on all tasks**: tasks use `assign_public_ip = true` to reach ECR, Secrets Manager, SSM, Gmail API, and S3 without a NAT gateway. This is intentional to avoid NAT gateway cost.
+3. **Public IPs on all tasks**: tasks use `assign_public_ip = true` to reach ECR, SSM, Gmail API, and S3 without a NAT gateway. This is intentional to avoid NAT gateway cost.
 4. **SQLite concurrency**: if `misa_task` and `app_task` ever overlap (e.g., if the stop schedule is delayed), both tasks mount the same EFS SQLite file. The EventBridge chain prevents simultaneous runs under normal conditions.
 

@@ -31,7 +31,7 @@ Gmail OAuth2 credentials can be provided as **file paths** (local dev) or **JSON
 | `GMAIL_CREDENTIALS_JSON` | ❌* | — | Full credentials JSON as a string (overrides path) |
 | `GMAIL_TOKEN_JSON` | ❌* | — | Full token JSON as a string (overrides path) |
 
-> *In CI/CD and Docker, provide `GMAIL_CREDENTIALS_JSON` and `GMAIL_TOKEN_JSON` as GitHub Secrets / AWS Secrets Manager values. These override the file path settings.
+> *In CI/CD and Docker, provide `GMAIL_CREDENTIALS_JSON` and `GMAIL_TOKEN_JSON` as GitHub Secrets / AWS SSM Parameter Store values. These override the file path settings.
 
 ### Getting Gmail credentials
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
